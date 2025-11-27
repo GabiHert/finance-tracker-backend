@@ -1,0 +1,16 @@
+Feature Planning Request
+Please perform a comprehensive evaluation and create implementation steps for a new feature. Follow the detailed instructions in /claude/prompts/feature-research.txt to generate a complete feature specification file.
+
+Feature Requirements:
+Feature: [REPLACE: Brief feature name/title]
+Description: [REPLACE: What the feature does and its purpose]
+Specifications:
+
+[REPLACE: Detailed requirements]
+[REPLACE: UI/UX specifications]
+[REPLACE: Functionality details]
+[REPLACE: Any specific constraints or notes]
+
+
+
+

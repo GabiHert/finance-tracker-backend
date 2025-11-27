@@ -1,0 +1,344 @@
+# Feature Research and Planning Instructions
+
+You are tasked with creating a comprehensive feature implementation plan. Follow these instructions carefully to generate a detailed feature specification that will guide the implementation process.
+
+## Pre-Requirements
+
+1. **Read and understand `/claude.md`** - All decisions must follow the project's coding standards and rules
+2. **Analyze the current codebase structure** - Understand existing patterns, domain models, and clean architecture layers
+3. **Identify reusable components** - Look for existing services, repositories, domain entities, and utilities that can be leveraged
+4. **Review similar features** - Check if there are existing implementations that can serve as reference
+5. **Study existing BDD step definitions** - Understand available generic steps that MUST be reused (no new steps allowed)
+
+## Feature File Creation
+
+Create TWO files for every feature (in this exact order):
+
+1. **BDD Feature File (MANDATORY FIRST)**: `/test/integration/features/<feature-name>.feature`
+2. **Planning Document**: `/claude/features/pending/<feature-name>.txt`
+
+**Naming Convention**: Use kebab-case for feature names (e.g., `user-management`, `payment-processing`)
+
+## Feature File Structure
+
+### 1. Feature Overview
+```
+# Feature: [Feature Name]
+
+## Description
+[2-3 sentences describing what this feature does and its purpose]
+
+## User Story
+As a [API consumer/system/service], I want [goal] so that [benefit].
+
+## Business Value
+- [Why this feature is important]
+- [Expected impact or outcomes]
+```
+
+### 2. Functional Requirements
+```
+## Functional Requirements
+
+### Core Functionality
+- [List primary functions the feature must perform]
+- [Include API behaviors and system interactions]
+
+### API Endpoint Requirements
+- [REST endpoints to be implemented]
+- [HTTP methods and paths]
+- [Request/Response formats]
+
+### Data Requirements
+- [Domain entities involved]
+- [Data validation rules]
+- [Business rules and constraints]
+```
+
+### 3. Definition of Done
+```
+## Definition of Done
+
+### Functionality Checklist
+- [ ] All BDD scenarios passing
+- [ ] All functional requirements implemented
+- [ ] API endpoints respond correctly to all HTTP methods
+- [ ] Error handling implemented with proper HTTP status codes
+- [ ] Request validation implemented
+
+### Code Quality Checklist
+- [ ] Code follows all rules in claude.md
+- [ ] Go interfaces properly defined
+- [ ] Clean architecture layers respected
+- [ ] No business logic in controllers or repositories
+- [ ] Code follows existing patterns in the codebase
+- [ ] Proper error wrapping and handling
+
+### Testing Checklist
+- [ ] BDD feature file created and all scenarios passing
+- [ ] Unit tests written with >80% coverage
+- [ ] Integration tests for repository layer
+- [ ] API endpoint tests for all routes
+- [ ] Domain logic tests
+- [ ] Table-driven tests where applicable
+
+### Documentation Checklist
+- [ ] README updated if necessary
+- [ ] API documentation updated (OpenAPI/Swagger)
+- [ ] GoDoc comments for all exported functions
+- [ ] Domain logic documented
+```
+
+### 4. Security Considerations
+```
+## Security Requirements
+
+### Authentication & Authorization
+- [JWT validation requirements]
+- [Role-based access controls]
+- [API key management if applicable]
+
+### Data Protection
+- [Input validation and sanitization]
+- [SQL injection prevention]
+- [Sensitive data handling]
+- [Encryption requirements]
+
+### API Security
+- [Rate limiting requirements]
+- [Request size limits]
+- [CORS configuration]
+- [Secure headers implementation]
+
+### Backend Security
+- [Context timeout handling]
+- [Goroutine leak prevention]
+- [Resource cleanup]
+```
+
+### 5. Performance Requirements
+```
+## Performance Specifications
+
+### Response Time Performance
+- [API response time targets]
+- [Database query optimization needs]
+- [Caching requirements]
+
+### Runtime Performance
+- [Concurrent request handling]
+- [Memory usage constraints]
+- [CPU usage optimization]
+- [Goroutine management]
+
+### Scalability Considerations
+- [Expected request load]
+- [Database connection pooling]
+- [Caching strategies (Redis, in-memory)]
+
+### Optimization Strategies
+- [Query optimization approaches]
+- [Bulk operation handling]
+- [Pagination implementation]
+```
+
+### 6. Maintainability Guidelines
+```
+## Code Quality Standards
+
+### Architecture Principles
+- [Clean architecture layer separation]
+- [Domain-driven design patterns]
+- [Dependency injection patterns]
+
+### Best Practices
+- [Go naming conventions to follow]
+- [Error handling patterns]
+- [Repository pattern implementation]
+
+### Documentation Requirements
+- [GoDoc for exported functions]
+- [Domain logic explanation]
+- [Complex business rules documentation]
+
+### Future Extensibility
+- [How this feature can be extended]
+- [Potential integration points]
+- [Configuration flexibility]
+```
+
+### 7. Implementation Plan
+```
+## Step-by-Step Implementation Tasks
+
+### Phase 1: BDD and Domain Modeling
+1. **Create BDD feature file**
+   - Write comprehensive scenarios using ONLY existing step definitions
+   - Cover happy paths, error cases, and edge cases
+   - Ensure scenarios are executable
+
+2. **Define domain entities**
+   - Create/extend entities in /internal/domain/entities
+   - Define value objects if needed
+   - Implement domain validation rules
+
+### Phase 2: Repository and Infrastructure
+3. **Implement repository interfaces**
+   - Define repository interfaces in domain layer
+   - Follow existing repository patterns
+
+4. **Implement repository**
+   - Create repository implementation in /internal/integration/repositories
+   - Follow existing database patterns
+   - Implement with proper error handling
+
+5. **Set up infrastructure**
+   - Configure database migrations if needed
+   - Set up caching layer if required
+   - Configure external service clients
+
+### Phase 3: Application Services
+6. **Implement use cases**
+   - Create service in /internal/application/services
+   - Implement business logic following existing patterns
+   - Use dependency injection
+
+7. **Add DTOs and mappers**
+   - Define request/response DTOs
+   - Create mappers between domain and DTOs
+   - Implement validation
+
+8. **Implement domain services** (if applicable)
+   - Complex business logic in domain layer
+   - Domain event handling
+
+### Phase 4: API Layer
+9. **Implement controllers**
+   - Create controllers in /internal/integration/controllers
+   - Follow RESTful conventions
+   - Implement proper HTTP status codes
+
+10. **Add middleware**
+    - Authentication/authorization middleware
+    - Request validation middleware
+    - Error handling middleware
+
+11. **Wire dependencies**
+    - Update dependency injection container
+    - Configure routes
+    - Set up middleware chain
+
+### Phase 5: Testing and Optimization
+12. **Run BDD tests**
+    - Ensure all feature scenarios pass
+    - No new step definitions created
+
+13. **Write unit tests**
+    - Domain entity tests
+    - Service layer tests
+    - Repository tests with mocks
+
+14. **Performance optimization**
+    - Database query optimization
+    - Implement caching where needed
+    - Profile and optimize hot paths
+
+### Phase 6: Documentation and Deployment
+15. **Update documentation**
+    - API documentation (OpenAPI spec)
+    - README updates
+    - Deployment instructions
+
+16. **Code review and refinement**
+    - Ensure clean architecture principles
+    - Verify existing patterns followed
+    - Check error handling completeness
+```
+
+### 8. Dependencies and Reusable Components
+```
+## Existing Code to Leverage
+
+### Services to Reuse
+- [List existing services that can be used]
+- [Location in /internal/application/services]
+
+### Repositories to Leverage
+- [Existing repository implementations]
+- [Database connection patterns]
+
+### Domain Components
+- [Existing entities and value objects]
+- [Domain services to reuse]
+
+### Infrastructure Components
+- [Existing middleware]
+- [Caching implementations]
+- [External service clients]
+
+### Third-party Dependencies
+- [Required new packages (justify why)]
+- [Existing packages that will be used]
+```
+
+### 9. Risks and Considerations
+```
+## Potential Challenges
+
+### Technical Risks
+- [Database migration risks]
+- [Performance bottlenecks]
+- [Concurrency issues]
+
+### Dependencies
+- [External service dependencies]
+- [Database dependencies]
+- [Team dependencies]
+
+### Timeline Considerations
+- [Estimated effort]
+- [Critical path items]
+```
+
+## Research Instructions
+
+Before creating the implementation plan:
+
+1. **Analyze the codebase** to understand:
+   - Clean architecture layer structure
+   - Existing domain models and patterns
+   - Repository implementation patterns
+   - Service layer patterns
+   - Controller patterns and middleware
+
+2. **Identify reusable elements**:
+   - Search for existing services that can be leveraged
+   - Find domain entities that can be extended
+   - Locate similar repository patterns
+   - Review existing BDD step definitions (MUST reuse these)
+
+3. **Review project standards**:
+   - Check claude.md for coding standards
+   - Understand the project's clean architecture approach
+   - Review existing error handling patterns
+   - Study existing BDD scenarios and step usage
+
+4. **Consider the bigger picture**:
+   - How this feature fits into the overall domain model
+   - Future extensibility requirements
+   - Integration points with other services
+   - Impact on existing APIs
+
+## Important Notes
+
+- **MANDATORY: Create BDD feature file FIRST** before any implementation
+- **NEVER create new BDD step definitions** - use only existing generic steps
+- **Always prioritize code reuse** over creating new implementations
+- **Follow established patterns** in the codebase consistently
+- **Respect clean architecture boundaries** - no business logic in controllers/repositories
+- **Plan for concurrent access** and goroutine safety
+- **Think about the API consumer experience** throughout the feature
+- **Ensure the feature is testable** at every layer
+- **Handle errors explicitly** - never ignore them
+
+Remember: This document serves as a blueprint for implementation. Be thorough in your research and planning to ensure smooth development and high-quality results following clean architecture and BDD principles.

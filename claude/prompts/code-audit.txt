@@ -1,0 +1,195 @@
+# Code Repository Audit Instructions
+
+You are an expert code auditor tasked with performing a comprehensive analysis of this entire backend repository.
+Your goal is to identify issues and create a detailed catalog for review, NOT to fix them immediately.
+Put all your findings into the file fixes.txt located in the /claude/fixes/pending directory.
+
+## Systematically scan the entire codebase and identify:
+
+### Code Quality Issues
+- **Code duplication** - Repeated logic, services, or repository methods
+- **Bad practices** - Ignored errors, panic usage, improper goroutine handling
+- **Inconsistent patterns** - Mixed coding styles, naming conventions violating Go standards
+- **Dead code** - Unused functions, types, interfaces, or files
+- **Complex functions** - Functions that are too long, have too many parameters, or cyclomatic complexity
+
+### Clean Architecture Violations
+- **Layer violations** - Business logic in controllers or repositories
+- **Dependency violations** - Controllers directly accessing repositories (bypassing services)
+- **Domain contamination** - Infrastructure concerns in domain layer
+- **Interface segregation** - Large interfaces that should be split
+- **Circular dependencies** - Packages importing each other
+
+### Organization & Structure
+- **Architecture violations** - Code not following clean architecture patterns
+- **File organization** - Misplaced files, incorrect folder structure per /internal layout
+- **Package structure** - Violations of internal/domain, internal/application, internal/integration separation
+- **Import issues** - Circular dependencies, importing from internal packages incorrectly
+- **Naming conventions** - Non-idiomatic Go naming (should be camelCase for unexported, PascalCase for exported)
+
+### Go-Specific Issues
+- **Error handling** - Errors ignored with `_`, not wrapped with context, missing nil checks
+- **Goroutine leaks** - Goroutines without proper lifecycle management
+- **Context misuse** - Not propagating context, missing timeouts, not checking context.Done()
+- **Interface pollution** - Unnecessary interfaces, not accepting interfaces/returning structs
+- **Type assertions** - Unsafe type assertions without checking second return value
+- **Defer misuse** - Defers in loops, missing defers for resource cleanup
+
+### API Design Issues
+- **RESTful violations** - Non-standard HTTP methods, improper status codes
+- **Missing validation** - Request body validation, query parameter validation
+- **Inconsistent responses** - Different error formats, inconsistent JSON structures
+- **Missing middleware** - No authentication, authorization, or rate limiting
+- **CORS issues** - Missing or overly permissive CORS configuration
+
+### BDD and Testing Issues
+- **Missing BDD scenarios** - Features without .feature files in /test/integration/features
+- **New step definitions** - Custom step definitions instead of using existing generic ones
+- **Low test coverage** - Services, repositories, or domain logic without tests
+- **Missing table-driven tests** - Not using table-driven tests where appropriate
+- **Test isolation** - Tests depending on external services without mocks
+
+### Security Issues
+- **Exposed secrets** - API keys, passwords, tokens, database credentials in code
+- **SQL injection** - String concatenation in queries, not using prepared statements
+- **Missing authentication** - Endpoints without proper auth checks
+- **Insecure JWT** - Weak signing keys, no expiration, algorithm none
+- **Input validation** - Missing sanitization, no bounds checking
+- **Rate limiting** - No rate limiting on sensitive endpoints
+
+### Performance Issues
+- **Database issues** - N+1 queries, missing indexes, no query optimization
+- **Connection leaks** - Database connections not closed, missing connection pooling
+- **Memory leaks** - Unclosed channels, growing slices, not releasing resources
+- **Inefficient algorithms** - O(n²) where O(n) possible, unnecessary loops
+- **Missing caching** - No caching strategy for frequently accessed data
+- **Goroutine explosion** - Creating unlimited goroutines without worker pools
+
+### Database & Repository Issues
+- **Transaction misuse** - Missing transactions for multi-step operations
+- **Missing migrations** - Database changes without migration files
+- **Repository violations** - Business logic in repository layer
+- **Raw SQL** - Using raw SQL instead of query builders where appropriate
+- **Connection management** - Not using connection pools, hardcoded connection strings
+
+### Documentation & Comments
+- **Commented code** - Old code left as comments (should be removed)
+- **TODO/FIXME comments** - Unfinished work markers indicating technical debt
+- **Missing GoDoc** - Exported functions, types, and packages without documentation
+- **Outdated comments** - Comments that no longer match the code
+- **Unnecessary comments** - Comments explaining obvious code instead of improving code clarity
+
+### Dependency Issues
+- **Outdated dependencies** - Old versions of packages in go.mod
+- **Unused dependencies** - Packages in go.mod not actually used
+- **Missing dependency injection** - Hard-coded dependencies instead of DI
+- **Vendor issues** - Inconsistent vendoring strategy
+- **Direct infrastructure access** - Services directly using infrastructure instead of interfaces
+
+## Output Format
+
+For each issue found, create an entry using this exact format:
+
+```
+**Fix ID: [CATEGORY]-[NUMBER]** ❌ NOT FIXED
+File: [relative/path/to/file]:[line-start]-[line-end]
+Issue: [Brief description of the problem]
+Fix: [Recommended solution approach]
+Location: [Where fix should be implemented]
+Criticality: [CRITICAL|HIGH|MEDIUM|LOW]
+Details: [Additional context, code snippets, or explanation]
+Status: Cataloged for review
+```
+
+## Criticality Levels
+
+- **CRITICAL**: Security vulnerabilities, data corruption risks, API breaking changes, goroutine leaks
+- **HIGH**: Clean architecture violations, missing error handling, performance bottlenecks, missing BDD tests
+- **MEDIUM**: Code duplication, maintainability concerns, missing validation, improper patterns
+- **LOW**: Style inconsistencies, minor optimizations, documentation gaps, naming issues
+
+## Category Codes
+
+- **SEC**: Security issues (auth, SQL injection, secrets)
+- **ARCH**: Clean architecture violations
+- **BDD**: BDD and testing issues
+- **PERF**: Performance problems
+- **DUP**: Code duplication
+- **ORG**: Organization/structure issues
+- **GO**: Go-specific issues (errors, goroutines, context)
+- **API**: RESTful API design issues
+- **DB**: Database and repository issues
+- **DOC**: Documentation and comments
+- **DEPS**: Dependencies and imports
+
+## Important Instructions
+
+- **DO NOT FIX ANYTHING** - Only catalog and document issues
+- **CHECK BDD FIRST** - Verify every feature has a .feature file using existing steps
+- **BE THOROUGH** - Scan every file in the repository
+- **BE SPECIFIC** - Include exact line numbers and file paths
+- **PRIORITIZE** - Start with critical security and architecture violations
+- **GROUP SIMILAR** - If you find the same pattern repeated, create one entry per instance
+- **PROVIDE CONTEXT** - Explain why something is an issue and how to fix it
+- **FOLLOW RULES** - Follow the rules located in CLAUDE.md at all times
+- **CHECK EXISTING PATTERNS** - Verify new code follows existing implementation patterns
+
+## Example Output
+
+```
+**Fix ID: SEC-001** ❌ NOT FIXED
+File: internal/infra/config/database.go:12-15
+Issue: Database credentials hardcoded in source code
+Fix: Move credentials to environment variables and use viper or env package
+Location: .env file and internal/infra/config/database.go
+Criticality: CRITICAL
+Details: Database password "admin123" is exposed in source. Create environment variables DB_HOST, DB_USER, DB_PASSWORD and load via config loader
+Status: Cataloged for review
+
+**Fix ID: ARCH-002** ❌ NOT FIXED
+File: internal/integration/controllers/http/user_controller.go:45-67
+Issue: Business logic in controller layer violating clean architecture
+Fix: Move user validation and calculation logic to application service layer
+Location: internal/application/services/user/service.go
+Criticality: HIGH
+Details: Controller contains password strength validation and user score calculation. This belongs in the application service layer
+Status: Cataloged for review
+
+**Fix ID: GO-003** ❌ NOT FIXED
+File: internal/application/services/order/service.go:89
+Issue: Error ignored with blank identifier
+Fix: Handle or wrap the error with proper context
+Location: Same file, line 89
+Criticality: HIGH
+Details: `result, _ := repo.Save(order)` ignores potential database error. Should handle: `if err != nil { return fmt.Errorf("failed to save order: %w", err) }`
+Status: Cataloged for review
+
+**Fix ID: BDD-004** ❌ NOT FIXED
+File: internal/application/services/payment/service.go
+Issue: Payment feature implemented without BDD feature file
+Fix: Create payment-processing.feature file with scenarios using existing step definitions
+Location: test/integration/features/payment-processing.feature
+Criticality: HIGH
+Details: Payment service exists but no corresponding .feature file found. Must create BDD scenarios before implementation
+Status: Cataloged for review
+
+**Fix ID: PERF-005** ❌ NOT FIXED
+File: internal/integration/repositories/postgres/product_repository.go:123-145
+Issue: N+1 query problem when fetching products with categories
+Fix: Use JOIN query or implement DataLoader pattern
+Location: Same file, refactor GetProducts method
+Criticality: HIGH
+Details: Loop calls GetCategory for each product. Should use: `SELECT p.*, c.* FROM products p LEFT JOIN categories c ON p.category_id = c.id`
+Status: Cataloged for review
+
+**Fix ID: DUP-006** ❌ NOT FIXED
+File: internal/application/services/user/service.go:23-45, internal/application/services/admin/service.go:67-89
+Issue: Duplicate email validation logic in two services
+Fix: Extract shared logic into internal/domain/valueobjects/email.go
+Location: internal/domain/valueobjects/email.go
+Criticality: MEDIUM
+Details: Both services contain identical email validation. Create Email value object with validation method
+Status: Cataloged for review
+```
+
+Start your audit now and provide a comprehensive catalog of all issues found.

@@ -1,0 +1,52 @@
+BDD Feature File Generation Instructions
+You are tasked with creating a new .feature file for BDD (Behavior Driven Development) tests. Follow these strict requirements:
+CRITICAL CONSTRAINTS
+
+DO NOT create new step definitions or functions
+ONLY use existing step definitions that are already implemented
+Use the existing functions as they are - they are generic enough to handle all scenarios
+Examine all existing .feature files in the project as examples and references
+Follow the exact same patterns and conventions used in existing feature files
+
+File location:
+- feature files: /test/integration/features
+- step definitions: /test/integration/steps
+- mocks: /test/integration/mocks
+
+Requirements
+
+Analyze Existing Features: First, examine all existing .feature files in the project to understand:
+
+The current step definition patterns
+Naming conventions
+Structure and format
+Available step definitions (Given, When, Then statements)
+
+
+Reuse Existing Steps: Only use step definitions that already exist in the codebase. The existing functions are designed to be generic and should cover all testing scenarios needed.
+Follow Established Patterns: Maintain consistency with:
+
+File naming conventions
+Feature descriptions
+Scenario structures
+Tag usage (if any)
+Data table formats (if used)
+
+
+Structure Requirements:
+
+Use proper Gherkin syntax
+Include appropriate Feature description
+Write clear Scenario names
+Use meaningful but generic step definitions
+Include Background steps if needed (following existing patterns)
+
+
+Output Format
+Generate a complete .feature file that:
+
+Follows the same format as existing feature files
+Uses only existing step definitions
+Covers the requested functionality comprehensively
+Maintains consistency with the project's testing approach
+
