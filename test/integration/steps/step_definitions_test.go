@@ -27,6 +27,7 @@ import (
 
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
@@ -66,18 +67,21 @@ func TestFeatures(t *testing.T) {
 }
 
 type testContext struct {
-	uri           string
-	headers       map[string]string
-	client        *http.Client
-	response      *response
-	db            *mock.Db
-	timeMock      *mock.Time
-	serverPort    int
-	accessToken   string
-	refreshToken  string
-	resetToken    string
-	expiredToken  string
-	currentUserID uuid.UUID
+	uri              string
+	headers          map[string]string
+	client           *http.Client
+	response         *response
+	db               *mock.Db
+	timeMock         *mock.Time
+	serverPort       int
+	accessToken      string
+	refreshToken     string
+	resetToken       string
+	expiredToken     string
+	currentUserID    uuid.UUID
+	currentCategoryID uuid.UUID
+	transactionIDs   []uuid.UUID
+	lastTransactionID uuid.UUID
 }
 
 type response struct {
@@ -112,6 +116,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			"refresh_tokens":        &model.RefreshTokenModel{},
 			"password_reset_tokens": &model.PasswordResetTokenModel{},
 			"categories":            &model.CategoryModel{},
+			"transactions":          &model.TransactionModel{},
 		}),
 	}
 
@@ -135,6 +140,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Given(`^the user is logged in with valid tokens$`, test.theUserIsLoggedInWithValidTokens)
 	ctx.Given(`^a password reset token exists for "([^"]*)"$`, test.aPasswordResetTokenExistsFor)
 	ctx.Given(`^an expired password reset token exists$`, test.anExpiredPasswordResetTokenExists)
+
+	// Category setup steps
+	ctx.Given(`^a category exists with name "([^"]*)" and type "([^"]*)"$`, test.aCategoryExistsWithNameAndType)
 
 	// Header steps
 	ctx.Given(`^the header is empty$`, test.theHeaderIsEmpty)
@@ -172,6 +180,9 @@ func (t *testContext) before() {
 	t.resetToken = ""
 	t.expiredToken = ""
 	t.currentUserID = uuid.Nil
+	t.currentCategoryID = uuid.Nil
+	t.transactionIDs = nil
+	t.lastTransactionID = uuid.Nil
 
 	if t.db != nil {
 		_ = t.db.ClearDB()
@@ -187,6 +198,7 @@ func (t *testContext) startServer() {
 			userRepo := persistence.NewUserRepository(testDB.DbConn)
 			tokenRepo := persistence.NewTokenRepository(testDB.DbConn)
 			categoryRepo := persistence.NewCategoryRepository(testDB.DbConn)
+			transactionRepo := persistence.NewTransactionRepository(testDB.DbConn)
 
 			// Create adapters/services
 			passwordService := adapters.NewPasswordService()
@@ -206,6 +218,14 @@ func (t *testContext) startServer() {
 			createCategoryUseCase := category.NewCreateCategoryUseCase(categoryRepo)
 			updateCategoryUseCase := category.NewUpdateCategoryUseCase(categoryRepo)
 			deleteCategoryUseCase := category.NewDeleteCategoryUseCase(categoryRepo)
+
+			// Create transaction use cases
+			listTransactionsUseCase := transaction.NewListTransactionsUseCase(transactionRepo)
+			createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo)
+			updateTransactionUseCase := transaction.NewUpdateTransactionUseCase(transactionRepo, categoryRepo)
+			deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
+			bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
+			bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
 
 			// Create controllers
 			healthController := controller.NewHealthController(func() bool {
@@ -228,11 +248,20 @@ func (t *testContext) startServer() {
 				deleteCategoryUseCase,
 			)
 
+			transactionController := controller.NewTransactionController(
+				listTransactionsUseCase,
+				createTransactionUseCase,
+				updateTransactionUseCase,
+				deleteTransactionUseCase,
+				bulkDeleteTransactionsUseCase,
+				bulkCategorizeTransactionsUseCase,
+			)
+
 			// Create middleware
 			loginRateLimiter := middleware.NewRateLimiter()
 			authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
-			r := router.NewRouter(healthController, authController, categoryController, loginRateLimiter, authMiddleware)
+			r := router.NewRouter(healthController, authController, categoryController, transactionController, loginRateLimiter, authMiddleware)
 			engine := r.Setup("test")
 
 			addr := fmt.Sprintf(":%d", testServerPort)
@@ -406,10 +435,15 @@ func (t *testContext) theHeaderContainsTheKeyWith(key, value string) error {
 }
 
 func (t *testContext) iSendARequestTo(method, path string) error {
+	// Replace placeholders in path
+	path = t.replaceTokenPlaceholders(path)
 	return t.executeRequest(method, path, nil)
 }
 
 func (t *testContext) iSendARequestToWithBody(method, path string, body *godog.DocString) error {
+	// Replace placeholders in path
+	path = t.replaceTokenPlaceholders(path)
+
 	var payload []byte
 	if body != nil && body.Content != "" {
 		content := t.replaceTokenPlaceholders(body.Content)
@@ -423,6 +457,18 @@ func (t *testContext) replaceTokenPlaceholders(content string) string {
 	content = strings.ReplaceAll(content, "{{access_token}}", t.accessToken)
 	content = strings.ReplaceAll(content, "{{reset_token}}", t.resetToken)
 	content = strings.ReplaceAll(content, "{{expired_reset_token}}", t.expiredToken)
+	content = strings.ReplaceAll(content, "{{category_id}}", t.currentCategoryID.String())
+	content = strings.ReplaceAll(content, "{{transaction_id}}", t.lastTransactionID.String())
+
+	// Handle transaction_ids array placeholder
+	if len(t.transactionIDs) > 0 {
+		ids := make([]string, len(t.transactionIDs))
+		for i, id := range t.transactionIDs {
+			ids[i] = fmt.Sprintf(`"%s"`, id.String())
+		}
+		content = strings.ReplaceAll(content, "{{transaction_ids}}", "["+strings.Join(ids, ", ")+"]")
+	}
+
 	return content
 }
 
@@ -471,6 +517,14 @@ func (t *testContext) executeRequest(method, path string, payload []byte) error 
 		t.response.body = string(bodyBytes)
 	} else {
 		t.response.body = responseBody
+
+		// Capture transaction ID from response if present
+		if idStr, ok := responseBody["id"].(string); ok {
+			if id, err := uuid.Parse(idStr); err == nil {
+				t.lastTransactionID = id
+				t.transactionIDs = append(t.transactionIDs, id)
+			}
+		}
 	}
 
 	return nil
@@ -643,4 +697,26 @@ func getFieldValue(object any, dotSeparatedField string) any {
 	}
 
 	return field
+}
+
+// aCategoryExistsWithNameAndType creates a category with the given name and type.
+func (t *testContext) aCategoryExistsWithNameAndType(name, categoryType string) error {
+	categoryID := uuid.New()
+	t.currentCategoryID = categoryID
+
+	now := time.Now().UTC()
+	categoryModel := &model.CategoryModel{
+		ID:        categoryID,
+		Name:      name,
+		Color:     "#6366F1",
+		Icon:      "tag",
+		OwnerType: "user",
+		OwnerID:   t.currentUserID,
+		Type:      categoryType,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	result := t.db.DbConn.Create(categoryModel)
+	return result.Error
 }

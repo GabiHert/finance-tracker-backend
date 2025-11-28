@@ -10,12 +10,13 @@ import (
 
 // Router holds the Gin engine and controller dependencies.
 type Router struct {
-	engine             *gin.Engine
-	healthController   *controller.HealthController
-	authController     *controller.AuthController
-	categoryController *controller.CategoryController
-	loginRateLimiter   *middleware.RateLimiter
-	authMiddleware     *middleware.AuthMiddleware
+	engine                *gin.Engine
+	healthController      *controller.HealthController
+	authController        *controller.AuthController
+	categoryController    *controller.CategoryController
+	transactionController *controller.TransactionController
+	loginRateLimiter      *middleware.RateLimiter
+	authMiddleware        *middleware.AuthMiddleware
 }
 
 // NewRouter creates a new router instance with all dependencies.
@@ -23,15 +24,17 @@ func NewRouter(
 	healthController *controller.HealthController,
 	authController *controller.AuthController,
 	categoryController *controller.CategoryController,
+	transactionController *controller.TransactionController,
 	loginRateLimiter *middleware.RateLimiter,
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
 	return &Router{
-		healthController:   healthController,
-		authController:     authController,
-		categoryController: categoryController,
-		loginRateLimiter:   loginRateLimiter,
-		authMiddleware:     authMiddleware,
+		healthController:      healthController,
+		authController:        authController,
+		categoryController:    categoryController,
+		transactionController: transactionController,
+		loginRateLimiter:      loginRateLimiter,
+		authMiddleware:        authMiddleware,
 	}
 }
 
@@ -89,11 +92,22 @@ func (r *Router) setupAPIRoutes() {
 			}
 		}
 
+		// Transaction routes (require authentication)
+		if r.transactionController != nil && r.authMiddleware != nil {
+			transactions := v1.Group("/transactions")
+			transactions.Use(r.authMiddleware.Authenticate())
+			{
+				transactions.GET("", r.transactionController.List)
+				transactions.POST("", r.transactionController.Create)
+				transactions.PATCH("/:id", r.transactionController.Update)
+				transactions.DELETE("/:id", r.transactionController.Delete)
+				transactions.POST("/bulk-delete", r.transactionController.BulkDelete)
+				transactions.POST("/bulk-categorize", r.transactionController.BulkCategorize)
+			}
+		}
+
 		// User routes (to be implemented)
 		_ = v1.Group("/users")
-
-		// Transaction routes (to be implemented)
-		_ = v1.Group("/transactions")
 
 		// Goal routes (to be implemented)
 		_ = v1.Group("/goals")

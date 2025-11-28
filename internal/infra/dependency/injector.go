@@ -7,6 +7,7 @@ import (
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
@@ -27,6 +28,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	userRepo := persistence.NewUserRepository(db)
 	tokenRepo := persistence.NewTokenRepository(db)
 	categoryRepo := persistence.NewCategoryRepository(db)
+	transactionRepo := persistence.NewTransactionRepository(db)
 
 	// Create adapters/services
 	passwordService := adapters.NewPasswordService()
@@ -46,6 +48,14 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	createCategoryUseCase := category.NewCreateCategoryUseCase(categoryRepo)
 	updateCategoryUseCase := category.NewUpdateCategoryUseCase(categoryRepo)
 	deleteCategoryUseCase := category.NewDeleteCategoryUseCase(categoryRepo)
+
+	// Create transaction use cases
+	listTransactionsUseCase := transaction.NewListTransactionsUseCase(transactionRepo)
+	createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo)
+	updateTransactionUseCase := transaction.NewUpdateTransactionUseCase(transactionRepo, categoryRepo)
+	deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
+	bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
+	bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
 
 	// Create controllers
 	healthController := controller.NewHealthController(func() bool {
@@ -72,12 +82,21 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		deleteCategoryUseCase,
 	)
 
+	transactionController := controller.NewTransactionController(
+		listTransactionsUseCase,
+		createTransactionUseCase,
+		updateTransactionUseCase,
+		deleteTransactionUseCase,
+		bulkDeleteTransactionsUseCase,
+		bulkCategorizeTransactionsUseCase,
+	)
+
 	// Create middleware
 	loginRateLimiter := middleware.NewRateLimiter()
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, categoryController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, categoryController, transactionController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,
