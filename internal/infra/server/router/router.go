@@ -5,18 +5,33 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
+	"github.com/finance-tracker/backend/internal/integration/entrypoint/middleware"
 )
 
 // Router holds the Gin engine and controller dependencies.
 type Router struct {
-	engine           *gin.Engine
-	healthController *controller.HealthController
+	engine             *gin.Engine
+	healthController   *controller.HealthController
+	authController     *controller.AuthController
+	categoryController *controller.CategoryController
+	loginRateLimiter   *middleware.RateLimiter
+	authMiddleware     *middleware.AuthMiddleware
 }
 
 // NewRouter creates a new router instance with all dependencies.
-func NewRouter(healthController *controller.HealthController) *Router {
+func NewRouter(
+	healthController *controller.HealthController,
+	authController *controller.AuthController,
+	categoryController *controller.CategoryController,
+	loginRateLimiter *middleware.RateLimiter,
+	authMiddleware *middleware.AuthMiddleware,
+) *Router {
 	return &Router{
-		healthController: healthController,
+		healthController:   healthController,
+		authController:     authController,
+		categoryController: categoryController,
+		loginRateLimiter:   loginRateLimiter,
+		authMiddleware:     authMiddleware,
 	}
 }
 
@@ -49,17 +64,36 @@ func (r *Router) setupAPIRoutes() {
 	// API v1 group
 	v1 := r.engine.Group("/api/v1")
 	{
-		// Auth routes (to be implemented)
-		_ = v1.Group("/auth")
+		// Auth routes (only setup if auth controller is available)
+		if r.authController != nil && r.loginRateLimiter != nil {
+			auth := v1.Group("/auth")
+			{
+				auth.POST("/register", r.authController.Register)
+				auth.POST("/login", r.loginRateLimiter.Middleware(), r.authController.Login)
+				auth.POST("/refresh", r.authController.RefreshToken)
+				auth.POST("/logout", r.authController.Logout)
+				auth.POST("/forgot-password", r.authController.ForgotPassword)
+				auth.POST("/reset-password", r.authController.ResetPassword)
+			}
+		}
+
+		// Category routes (require authentication)
+		if r.categoryController != nil && r.authMiddleware != nil {
+			categories := v1.Group("/categories")
+			categories.Use(r.authMiddleware.Authenticate())
+			{
+				categories.GET("", r.categoryController.List)
+				categories.POST("", r.categoryController.Create)
+				categories.PATCH("/:id", r.categoryController.Update)
+				categories.DELETE("/:id", r.categoryController.Delete)
+			}
+		}
 
 		// User routes (to be implemented)
 		_ = v1.Group("/users")
 
 		// Transaction routes (to be implemented)
 		_ = v1.Group("/transactions")
-
-		// Category routes (to be implemented)
-		_ = v1.Group("/categories")
 
 		// Goal routes (to be implemented)
 		_ = v1.Group("/goals")

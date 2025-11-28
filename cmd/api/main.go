@@ -14,9 +14,15 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/finance-tracker/backend/config"
+	"github.com/finance-tracker/backend/internal/application/usecase/auth"
+	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	"github.com/finance-tracker/backend/internal/infra/db"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
+	"github.com/finance-tracker/backend/internal/integration/adapters"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
+	"github.com/finance-tracker/backend/internal/integration/entrypoint/middleware"
+	"github.com/finance-tracker/backend/internal/integration/persistence"
+	"github.com/finance-tracker/backend/internal/integration/persistence/model"
 )
 
 func main() {
@@ -49,6 +55,18 @@ func main() {
 		)
 		dbHealthChecker = func() bool { return false }
 	} else {
+		// Run database migrations
+		if err := database.AutoMigrate(
+			&model.UserModel{},
+			&model.RefreshTokenModel{},
+			&model.PasswordResetTokenModel{},
+			&model.CategoryModel{},
+		); err != nil {
+			slog.Error("Failed to run database migrations", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Database migrations completed successfully")
+
 		dbHealthChecker = database.HealthCheck
 		defer func() {
 			if err := database.Close(); err != nil {
@@ -60,8 +78,66 @@ func main() {
 	// Create health controller with database health checker
 	healthController := controller.NewHealthController(dbHealthChecker)
 
+	// Create controllers and middleware (only if database is available)
+	var authController *controller.AuthController
+	var categoryController *controller.CategoryController
+	var loginRateLimiter *middleware.RateLimiter
+	var authMiddleware *middleware.AuthMiddleware
+
+	if database != nil {
+		// Create repositories
+		userRepo := persistence.NewUserRepository(database.DB())
+		tokenRepo := persistence.NewTokenRepository(database.DB())
+		categoryRepo := persistence.NewCategoryRepository(database.DB())
+
+		// Create adapters/services
+		passwordService := adapters.NewPasswordService()
+		tokenService := adapters.NewTokenService(cfg.JWT.Secret, tokenRepo)
+		resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
+
+		// Create auth use cases
+		registerUseCase := auth.NewRegisterUserUseCase(userRepo, passwordService, tokenService)
+		loginUseCase := auth.NewLoginUserUseCase(userRepo, passwordService, tokenService)
+		refreshTokenUseCase := auth.NewRefreshTokenUseCase(tokenService)
+		logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
+		forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
+		resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
+
+		// Create category use cases
+		listCategoriesUseCase := category.NewListCategoriesUseCase(categoryRepo)
+		createCategoryUseCase := category.NewCreateCategoryUseCase(categoryRepo)
+		updateCategoryUseCase := category.NewUpdateCategoryUseCase(categoryRepo)
+		deleteCategoryUseCase := category.NewDeleteCategoryUseCase(categoryRepo)
+
+		// Create auth controller
+		authController = controller.NewAuthController(
+			registerUseCase,
+			loginUseCase,
+			refreshTokenUseCase,
+			logoutUseCase,
+			forgotPasswordUseCase,
+			resetPasswordUseCase,
+		)
+
+		// Create category controller
+		categoryController = controller.NewCategoryController(
+			listCategoriesUseCase,
+			createCategoryUseCase,
+			updateCategoryUseCase,
+			deleteCategoryUseCase,
+		)
+
+		// Create middleware
+		loginRateLimiter = middleware.NewRateLimiter()
+		authMiddleware = middleware.NewAuthMiddleware(tokenService)
+
+		slog.Info("Auth and Category systems initialized successfully")
+	} else {
+		slog.Warn("Auth and Category systems not initialized due to missing database connection")
+	}
+
 	// Setup router
-	r := router.NewRouter(healthController)
+	r := router.NewRouter(healthController, authController, categoryController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server
