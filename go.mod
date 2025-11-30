@@ -1,6 +1,6 @@
 module github.com/finance-tracker/backend
 
-go 1.24.0
+go 1.23.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.33.0
@@ -11,7 +11,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.7.0
-	golang.org/x/crypto v0.45.0
+	github.com/shopspring/decimal v1.4.0
+	golang.org/x/crypto v0.31.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 )
@@ -51,16 +52,15 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.22.5 // indirect

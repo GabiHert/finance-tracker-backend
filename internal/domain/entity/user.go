@@ -47,6 +47,7 @@ type User struct {
 	TermsAcceptedAt    time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	DeletedAt          *time.Time // Soft-delete support
 }
 
 // NewUser creates a new User with default values.

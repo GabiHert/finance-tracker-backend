@@ -68,7 +68,7 @@ func Load() *Config {
 			Environment:  getEnv("ENV", "development"),
 		},
 		Database: DatabaseConfig{
-			URL:             getEnv("DATABASE_URL", "postgres://app_user:app_password@localhost:5432/finance_tracker?sslmode=disable"),
+			URL:             getEnv("DATABASE_URL", "postgres://app_user:app_password@localhost:5433/finance_tracker?sslmode=disable"),
 			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 5),
 			ConnMaxLifetime: getEnvAsDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),

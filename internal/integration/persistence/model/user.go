@@ -5,25 +5,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/finance-tracker/backend/internal/domain/entity"
 )
 
 // UserModel represents the user table in the database.
 type UserModel struct {
-	ID                 uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Email              string    `gorm:"type:varchar(255);uniqueIndex;not null"`
-	Name               string    `gorm:"type:varchar(100);not null"`
-	PasswordHash       string    `gorm:"type:varchar(255);not null"`
-	DateFormat         string    `gorm:"type:varchar(20);default:'YYYY-MM-DD'"`
-	NumberFormat       string    `gorm:"type:varchar(10);default:'US'"`
-	FirstDayOfWeek     string    `gorm:"type:varchar(10);default:'sunday'"`
-	EmailNotifications bool      `gorm:"default:true"`
-	GoalAlerts         bool      `gorm:"default:true"`
-	RecurringReminders bool      `gorm:"default:true"`
-	TermsAcceptedAt    time.Time `gorm:"not null"`
-	CreatedAt          time.Time `gorm:"not null"`
-	UpdatedAt          time.Time `gorm:"not null"`
+	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	Email              string         `gorm:"type:varchar(255);uniqueIndex;not null"`
+	Name               string         `gorm:"type:varchar(100);not null"`
+	PasswordHash       string         `gorm:"type:varchar(255);not null"`
+	DateFormat         string         `gorm:"type:varchar(20);default:'YYYY-MM-DD'"`
+	NumberFormat       string         `gorm:"type:varchar(10);default:'US'"`
+	FirstDayOfWeek     string         `gorm:"type:varchar(10);default:'sunday'"`
+	EmailNotifications bool           `gorm:"default:true"`
+	GoalAlerts         bool           `gorm:"default:true"`
+	RecurringReminders bool           `gorm:"default:true"`
+	TermsAcceptedAt    time.Time      `gorm:"not null"`
+	CreatedAt          time.Time      `gorm:"not null"`
+	UpdatedAt          time.Time      `gorm:"not null"`
+	DeletedAt          gorm.DeletedAt `gorm:"index"` // Soft-delete support
 }
 
 // TableName returns the table name for the UserModel.
@@ -33,6 +35,11 @@ func (UserModel) TableName() string {
 
 // ToEntity converts a UserModel to a domain User entity.
 func (m *UserModel) ToEntity() *entity.User {
+	var deletedAt *time.Time
+	if m.DeletedAt.Valid {
+		deletedAt = &m.DeletedAt.Time
+	}
+
 	return &entity.User{
 		ID:                 m.ID,
 		Email:              m.Email,
@@ -47,11 +54,17 @@ func (m *UserModel) ToEntity() *entity.User {
 		TermsAcceptedAt:    m.TermsAcceptedAt,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
+		DeletedAt:          deletedAt,
 	}
 }
 
 // FromEntity creates a UserModel from a domain User entity.
 func FromEntity(user *entity.User) *UserModel {
+	var deletedAt gorm.DeletedAt
+	if user.DeletedAt != nil {
+		deletedAt = gorm.DeletedAt{Time: *user.DeletedAt, Valid: true}
+	}
+
 	return &UserModel{
 		ID:                 user.ID,
 		Email:              user.Email,
@@ -66,6 +79,7 @@ func FromEntity(user *entity.User) *UserModel {
 		TermsAcceptedAt:    user.TermsAcceptedAt,
 		CreatedAt:          user.CreatedAt,
 		UpdatedAt:          user.UpdatedAt,
+		DeletedAt:          deletedAt,
 	}
 }
 
