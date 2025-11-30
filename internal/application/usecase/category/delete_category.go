@@ -61,6 +61,11 @@ func (uc *DeleteCategoryUseCase) Execute(ctx context.Context, input DeleteCatego
 		)
 	}
 
+	// Orphan transactions that reference this category (set category_id to NULL)
+	if err := uc.categoryRepo.OrphanTransactionsByCategory(ctx, input.CategoryID); err != nil {
+		return nil, fmt.Errorf("failed to orphan transactions: %w", err)
+	}
+
 	// Delete the category
 	if err := uc.categoryRepo.Delete(ctx, input.CategoryID); err != nil {
 		return nil, fmt.Errorf("failed to delete category: %w", err)

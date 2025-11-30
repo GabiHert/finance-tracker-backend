@@ -133,13 +133,16 @@ func (r *categoryRepository) ExistsByNameAndOwner(ctx context.Context, name stri
 	return count > 0, nil
 }
 
-// GetTransactionStats retrieves transaction statistics for categories within a date range.
-// Note: This is a placeholder implementation. Full implementation requires the Transaction model.
-func (r *categoryRepository) GetTransactionStats(ctx context.Context, categoryIDs []uuid.UUID, startDate, endDate time.Time) (map[uuid.UUID]*adapter.CategoryStats, error) {
-	// Placeholder: Return empty stats until transactions are implemented
-	// In full implementation, this would query the transactions table
-	// and aggregate counts and totals by category_id
+// categoryStatsResult represents the result of a category statistics query.
+type categoryStatsResult struct {
+	CategoryID       uuid.UUID
+	TransactionCount int
+	PeriodTotal      float64
+}
 
+// GetTransactionStats retrieves transaction statistics for categories within a date range.
+func (r *categoryRepository) GetTransactionStats(ctx context.Context, categoryIDs []uuid.UUID, startDate, endDate time.Time) (map[uuid.UUID]*adapter.CategoryStats, error) {
+	// Initialize stats map with zeros for all requested category IDs
 	stats := make(map[uuid.UUID]*adapter.CategoryStats)
 	for _, id := range categoryIDs {
 		stats[id] = &adapter.CategoryStats{
@@ -147,5 +150,44 @@ func (r *categoryRepository) GetTransactionStats(ctx context.Context, categoryID
 			PeriodTotal:      0,
 		}
 	}
+
+	// Return early if no category IDs provided
+	if len(categoryIDs) == 0 {
+		return stats, nil
+	}
+
+	// Query transaction statistics grouped by category_id
+	var results []categoryStatsResult
+	query := r.db.WithContext(ctx).
+		Model(&model.TransactionModel{}).
+		Select("category_id, COUNT(*) as transaction_count, COALESCE(SUM(amount), 0) as period_total").
+		Where("category_id IN ?", categoryIDs).
+		Where("date >= ? AND date <= ?", startDate, endDate).
+		Group("category_id")
+
+	if err := query.Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	// Update stats map with query results
+	for _, result := range results {
+		if _, exists := stats[result.CategoryID]; exists {
+			stats[result.CategoryID].TransactionCount = result.TransactionCount
+			stats[result.CategoryID].PeriodTotal = result.PeriodTotal
+		}
+	}
+
 	return stats, nil
+}
+
+// OrphanTransactionsByCategory sets category_id to NULL for all transactions with the given category ID.
+func (r *categoryRepository) OrphanTransactionsByCategory(ctx context.Context, categoryID uuid.UUID) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.TransactionModel{}).
+		Where("category_id = ?", categoryID).
+		Update("category_id", nil)
+	if result.Error != nil {
+		return result.Error
+	}
+	return nil
 }

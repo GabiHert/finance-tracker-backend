@@ -38,6 +38,9 @@ type CategoryRepository interface {
 
 	// GetTransactionStats retrieves transaction statistics for categories within a date range.
 	GetTransactionStats(ctx context.Context, categoryIDs []uuid.UUID, startDate, endDate time.Time) (map[uuid.UUID]*CategoryStats, error)
+
+	// OrphanTransactionsByCategory sets category_id to NULL for all transactions with the given category ID.
+	OrphanTransactionsByCategory(ctx context.Context, categoryID uuid.UUID) error
 }
 
 // CategoryStats represents transaction statistics for a category.

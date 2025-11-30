@@ -68,14 +68,26 @@ func (uc *ListCategoriesUseCase) Execute(ctx context.Context, input ListCategori
 		return nil, err
 	}
 
-	// Get transaction statistics if date range is provided
+	// Get transaction statistics - always fetch, using wide date range if not provided
 	var stats map[uuid.UUID]*adapter.CategoryStats
-	if input.StartDate != nil && input.EndDate != nil && len(categories) > 0 {
+	if len(categories) > 0 {
 		categoryIDs := make([]uuid.UUID, len(categories))
 		for i, cat := range categories {
 			categoryIDs[i] = cat.ID
 		}
-		stats, err = uc.categoryRepo.GetTransactionStats(ctx, categoryIDs, *input.StartDate, *input.EndDate)
+
+		// Use provided date range or default to a wide range (all time)
+		startDate := input.StartDate
+		endDate := input.EndDate
+		if startDate == nil || endDate == nil {
+			// Default: from Unix epoch (1970-01-01) to far future (2100-01-01)
+			defaultStart := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+			defaultEnd := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+			startDate = &defaultStart
+			endDate = &defaultEnd
+		}
+
+		stats, err = uc.categoryRepo.GetTransactionStats(ctx, categoryIDs, *startDate, *endDate)
 		if err != nil {
 			// Log error but continue without stats
 			stats = nil

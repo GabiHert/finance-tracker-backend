@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -54,6 +55,12 @@ func NewRateLimiterWithConfig(maxAttempts int, windowDuration time.Duration) *Ra
 // Middleware returns a Gin middleware handler that enforces rate limiting.
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip rate limiting in E2E mode
+		if os.Getenv("E2E_MODE") == "true" {
+			c.Next()
+			return
+		}
+
 		// Get client IP
 		clientIP := c.ClientIP()
 		if clientIP == "" {
