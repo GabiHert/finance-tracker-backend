@@ -42,6 +42,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
 	forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
 	resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
+	deleteAccountUseCase := auth.NewDeleteAccountUseCase(userRepo, passwordService, tokenService)
 
 	// Create category use cases
 	listCategoriesUseCase := category.NewListCategoriesUseCase(categoryRepo)
@@ -75,6 +76,10 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		resetPasswordUseCase,
 	)
 
+	userController := controller.NewUserController(
+		deleteAccountUseCase,
+	)
+
 	categoryController := controller.NewCategoryController(
 		listCategoriesUseCase,
 		createCategoryUseCase,
@@ -96,7 +101,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, categoryController, transactionController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

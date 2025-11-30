@@ -43,6 +43,12 @@ type ResetPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
+// DeleteAccountRequest represents the request body for account deletion.
+type DeleteAccountRequest struct {
+	Password     string `json:"password" binding:"required"`
+	Confirmation string `json:"confirmation"` // Optional - frontend validates in UI
+}
+
 // AuthResponse represents the response for authentication endpoints.
 type AuthResponse struct {
 	AccessToken  string       `json:"access_token"`

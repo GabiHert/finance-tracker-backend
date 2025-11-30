@@ -136,6 +136,11 @@ func (s *tokenService) InvalidateRefreshToken(ctx context.Context, token string)
 	return s.tokenRepository.InvalidateRefreshToken(ctx, token)
 }
 
+// InvalidateAllUserTokens invalidates all refresh tokens for a user.
+func (s *tokenService) InvalidateAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	return s.tokenRepository.InvalidateAllUserRefreshTokens(ctx, userID)
+}
+
 // IsRefreshTokenValid checks if a refresh token is still valid (not invalidated).
 func (s *tokenService) IsRefreshTokenValid(ctx context.Context, token string) (bool, error) {
 	return s.tokenRepository.IsRefreshTokenValid(ctx, token)

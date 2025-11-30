@@ -58,6 +58,9 @@ const (
 	// Password reset errors (04XXXX)
 	ErrCodeInvalidResetToken  AuthErrorCode = "AUTH-040001"
 	ErrCodeExpiredResetToken  AuthErrorCode = "AUTH-040002"
+
+	// Delete account errors (05XXXX)
+	ErrCodeInvalidConfirmation AuthErrorCode = "AUTH-050001"
 )
 
 // AuthError represents an authentication error with code and message.

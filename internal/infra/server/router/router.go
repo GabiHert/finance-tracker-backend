@@ -13,6 +13,7 @@ type Router struct {
 	engine                *gin.Engine
 	healthController      *controller.HealthController
 	authController        *controller.AuthController
+	userController        *controller.UserController
 	categoryController    *controller.CategoryController
 	transactionController *controller.TransactionController
 	loginRateLimiter      *middleware.RateLimiter
@@ -23,6 +24,7 @@ type Router struct {
 func NewRouter(
 	healthController *controller.HealthController,
 	authController *controller.AuthController,
+	userController *controller.UserController,
 	categoryController *controller.CategoryController,
 	transactionController *controller.TransactionController,
 	loginRateLimiter *middleware.RateLimiter,
@@ -31,6 +33,7 @@ func NewRouter(
 	return &Router{
 		healthController:      healthController,
 		authController:        authController,
+		userController:        userController,
 		categoryController:    categoryController,
 		transactionController: transactionController,
 		loginRateLimiter:      loginRateLimiter,
@@ -106,8 +109,14 @@ func (r *Router) setupAPIRoutes() {
 			}
 		}
 
-		// User routes (to be implemented)
-		_ = v1.Group("/users")
+		// User routes (require authentication)
+		if r.userController != nil && r.authMiddleware != nil {
+			users := v1.Group("/users")
+			users.Use(r.authMiddleware.Authenticate())
+			{
+				users.DELETE("/me", r.userController.DeleteAccount)
+			}
+		}
 
 		// Goal routes (to be implemented)
 		_ = v1.Group("/goals")

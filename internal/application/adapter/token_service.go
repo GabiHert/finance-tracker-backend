@@ -35,6 +35,9 @@ type TokenService interface {
 	// InvalidateRefreshToken invalidates a refresh token.
 	InvalidateRefreshToken(ctx context.Context, token string) error
 
+	// InvalidateAllUserTokens invalidates all refresh tokens for a user.
+	InvalidateAllUserTokens(ctx context.Context, userID uuid.UUID) error
+
 	// IsRefreshTokenValid checks if a refresh token is still valid (not invalidated).
 	IsRefreshTokenValid(ctx context.Context, token string) (bool, error)
 }

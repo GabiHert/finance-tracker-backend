@@ -82,6 +82,7 @@ func main() {
 
 	// Create controllers and middleware (only if database is available)
 	var authController *controller.AuthController
+	var userController *controller.UserController
 	var categoryController *controller.CategoryController
 	var transactionController *controller.TransactionController
 	var loginRateLimiter *middleware.RateLimiter
@@ -106,6 +107,7 @@ func main() {
 		logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
 		forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
 		resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
+		deleteAccountUseCase := auth.NewDeleteAccountUseCase(userRepo, passwordService, tokenService)
 
 		// Create category use cases
 		listCategoriesUseCase := category.NewListCategoriesUseCase(categoryRepo)
@@ -129,6 +131,11 @@ func main() {
 			logoutUseCase,
 			forgotPasswordUseCase,
 			resetPasswordUseCase,
+		)
+
+		// Create user controller
+		userController = controller.NewUserController(
+			deleteAccountUseCase,
 		)
 
 		// Create category controller
@@ -159,7 +166,7 @@ func main() {
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, categoryController, transactionController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server
