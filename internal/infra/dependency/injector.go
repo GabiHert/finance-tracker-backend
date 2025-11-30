@@ -2,6 +2,8 @@
 package dependency
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 
 	"github.com/finance-tracker/backend/config"
@@ -97,7 +99,13 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	)
 
 	// Create middleware
-	loginRateLimiter := middleware.NewRateLimiter()
+	// Use higher rate limits for E2E/test environments to prevent flaky tests
+	var loginRateLimiter *middleware.RateLimiter
+	if cfg.Server.Environment == "e2e" || cfg.Server.Environment == "test" {
+		loginRateLimiter = middleware.NewRateLimiterWithConfig(1000, 1*time.Minute)
+	} else {
+		loginRateLimiter = middleware.NewRateLimiter()
+	}
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
