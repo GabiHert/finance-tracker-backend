@@ -16,6 +16,7 @@ type Router struct {
 	userController        *controller.UserController
 	categoryController    *controller.CategoryController
 	transactionController *controller.TransactionController
+	goalController        *controller.GoalController
 	loginRateLimiter      *middleware.RateLimiter
 	authMiddleware        *middleware.AuthMiddleware
 }
@@ -27,6 +28,7 @@ func NewRouter(
 	userController *controller.UserController,
 	categoryController *controller.CategoryController,
 	transactionController *controller.TransactionController,
+	goalController *controller.GoalController,
 	loginRateLimiter *middleware.RateLimiter,
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
@@ -36,6 +38,7 @@ func NewRouter(
 		userController:        userController,
 		categoryController:    categoryController,
 		transactionController: transactionController,
+		goalController:        goalController,
 		loginRateLimiter:      loginRateLimiter,
 		authMiddleware:        authMiddleware,
 	}
@@ -118,8 +121,18 @@ func (r *Router) setupAPIRoutes() {
 			}
 		}
 
-		// Goal routes (to be implemented)
-		_ = v1.Group("/goals")
+		// Goal routes (require authentication)
+		if r.goalController != nil && r.authMiddleware != nil {
+			goals := v1.Group("/goals")
+			goals.Use(r.authMiddleware.Authenticate())
+			{
+				goals.GET("", r.goalController.List)
+				goals.POST("", r.goalController.Create)
+				goals.GET("/:id", r.goalController.Get)
+				goals.PATCH("/:id", r.goalController.Update)
+				goals.DELETE("/:id", r.goalController.Delete)
+			}
+		}
 
 		// Group routes (to be implemented)
 		_ = v1.Group("/groups")

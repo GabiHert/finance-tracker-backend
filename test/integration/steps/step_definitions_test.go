@@ -27,6 +27,7 @@ import (
 
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
@@ -67,20 +68,21 @@ func TestFeatures(t *testing.T) {
 }
 
 type testContext struct {
-	uri              string
-	headers          map[string]string
-	client           *http.Client
-	response         *response
-	db               *mock.Db
-	timeMock         *mock.Time
-	serverPort       int
-	accessToken      string
-	refreshToken     string
-	resetToken       string
-	expiredToken     string
-	currentUserID    uuid.UUID
+	uri               string
+	headers           map[string]string
+	client            *http.Client
+	response          *response
+	db                *mock.Db
+	timeMock          *mock.Time
+	serverPort        int
+	accessToken       string
+	refreshToken      string
+	resetToken        string
+	expiredToken      string
+	currentUserID     uuid.UUID
 	currentCategoryID uuid.UUID
-	transactionIDs   []uuid.UUID
+	currentGoalID     uuid.UUID
+	transactionIDs    []uuid.UUID
 	lastTransactionID uuid.UUID
 }
 
@@ -117,6 +119,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			"password_reset_tokens": &model.PasswordResetTokenModel{},
 			"categories":            &model.CategoryModel{},
 			"transactions":          &model.TransactionModel{},
+			"goals":                 &model.GoalModel{},
 		}),
 	}
 
@@ -143,6 +146,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Category setup steps
 	ctx.Given(`^a category exists with name "([^"]*)" and type "([^"]*)"$`, test.aCategoryExistsWithNameAndType)
+
+	// Goal setup steps
+	ctx.Given(`^a goal exists for category "([^"]*)" with limit "([^"]*)"$`, test.aGoalExistsForCategoryWithLimit)
 
 	// Header steps
 	ctx.Given(`^the header is empty$`, test.theHeaderIsEmpty)
@@ -181,6 +187,7 @@ func (t *testContext) before() {
 	t.expiredToken = ""
 	t.currentUserID = uuid.Nil
 	t.currentCategoryID = uuid.Nil
+	t.currentGoalID = uuid.Nil
 	t.transactionIDs = nil
 	t.lastTransactionID = uuid.Nil
 
@@ -199,6 +206,7 @@ func (t *testContext) startServer() {
 			tokenRepo := persistence.NewTokenRepository(testDB.DbConn)
 			categoryRepo := persistence.NewCategoryRepository(testDB.DbConn)
 			transactionRepo := persistence.NewTransactionRepository(testDB.DbConn)
+			goalRepo := persistence.NewGoalRepository(testDB.DbConn)
 
 			// Create adapters/services
 			passwordService := adapters.NewPasswordService()
@@ -226,6 +234,13 @@ func (t *testContext) startServer() {
 			deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 			bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
 			bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
+
+			// Create goal use cases
+			listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
+			createGoalUseCase := goal.NewCreateGoalUseCase(goalRepo, categoryRepo)
+			getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
+			updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
+			deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
 
 			// Create controllers
 			healthController := controller.NewHealthController(func() bool {
@@ -257,11 +272,19 @@ func (t *testContext) startServer() {
 				bulkCategorizeTransactionsUseCase,
 			)
 
+			goalController := controller.NewGoalController(
+				listGoalsUseCase,
+				createGoalUseCase,
+				getGoalUseCase,
+				updateGoalUseCase,
+				deleteGoalUseCase,
+			)
+
 			// Create middleware
 			loginRateLimiter := middleware.NewRateLimiter()
 			authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
-			r := router.NewRouter(healthController, authController, categoryController, transactionController, loginRateLimiter, authMiddleware)
+			r := router.NewRouter(healthController, authController, nil, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
 			engine := r.Setup("test")
 
 			addr := fmt.Sprintf(":%d", testServerPort)
@@ -458,6 +481,7 @@ func (t *testContext) replaceTokenPlaceholders(content string) string {
 	content = strings.ReplaceAll(content, "{{reset_token}}", t.resetToken)
 	content = strings.ReplaceAll(content, "{{expired_reset_token}}", t.expiredToken)
 	content = strings.ReplaceAll(content, "{{category_id}}", t.currentCategoryID.String())
+	content = strings.ReplaceAll(content, "{{goal_id}}", t.currentGoalID.String())
 	content = strings.ReplaceAll(content, "{{transaction_id}}", t.lastTransactionID.String())
 
 	// Handle transaction_ids array placeholder
@@ -718,5 +742,38 @@ func (t *testContext) aCategoryExistsWithNameAndType(name, categoryType string) 
 	}
 
 	result := t.db.DbConn.Create(categoryModel)
+	return result.Error
+}
+
+// aGoalExistsForCategoryWithLimit creates a goal for the specified category with the given limit amount.
+func (t *testContext) aGoalExistsForCategoryWithLimit(categoryName, limitAmount string) error {
+	// Find the category by name
+	var categoryModel model.CategoryModel
+	if err := t.db.DbConn.Where("name = ? AND owner_id = ?", categoryName, t.currentUserID).First(&categoryModel).Error; err != nil {
+		return fmt.Errorf("category '%s' not found: %w", categoryName, err)
+	}
+
+	// Parse limit amount
+	limit, err := strconv.ParseFloat(limitAmount, 64)
+	if err != nil {
+		return fmt.Errorf("invalid limit amount '%s': %w", limitAmount, err)
+	}
+
+	goalID := uuid.New()
+	t.currentGoalID = goalID
+
+	now := time.Now().UTC()
+	goalModel := &model.GoalModel{
+		ID:            goalID,
+		UserID:        t.currentUserID,
+		CategoryID:    categoryModel.ID,
+		LimitAmount:   limit,
+		AlertOnExceed: true,
+		Period:        "monthly",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	result := t.db.DbConn.Create(goalModel)
 	return result.Error
 }

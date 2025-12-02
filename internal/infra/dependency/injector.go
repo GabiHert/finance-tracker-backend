@@ -9,6 +9,7 @@ import (
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
@@ -31,6 +32,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	tokenRepo := persistence.NewTokenRepository(db)
 	categoryRepo := persistence.NewCategoryRepository(db)
 	transactionRepo := persistence.NewTransactionRepository(db)
+	goalRepo := persistence.NewGoalRepository(db)
 
 	// Create adapters/services
 	passwordService := adapters.NewPasswordService()
@@ -59,6 +61,13 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 	bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
 	bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
+
+	// Create goal use cases
+	listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
+	createGoalUseCase := goal.NewCreateGoalUseCase(goalRepo, categoryRepo)
+	getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
+	updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
+	deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
 
 	// Create controllers
 	healthController := controller.NewHealthController(func() bool {
@@ -98,6 +107,14 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		bulkCategorizeTransactionsUseCase,
 	)
 
+	goalController := controller.NewGoalController(
+		listGoalsUseCase,
+		createGoalUseCase,
+		getGoalUseCase,
+		updateGoalUseCase,
+		deleteGoalUseCase,
+	)
+
 	// Create middleware
 	// Use higher rate limits for E2E/test environments to prevent flaky tests
 	var loginRateLimiter *middleware.RateLimiter
@@ -109,7 +126,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

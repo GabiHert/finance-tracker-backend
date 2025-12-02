@@ -16,6 +16,7 @@ import (
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/db"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
@@ -63,6 +64,7 @@ func main() {
 			&model.PasswordResetTokenModel{},
 			&model.CategoryModel{},
 			&model.TransactionModel{},
+			&model.GoalModel{},
 		); err != nil {
 			slog.Error("Failed to run database migrations", "error", err)
 			os.Exit(1)
@@ -85,6 +87,7 @@ func main() {
 	var userController *controller.UserController
 	var categoryController *controller.CategoryController
 	var transactionController *controller.TransactionController
+	var goalController *controller.GoalController
 	var loginRateLimiter *middleware.RateLimiter
 	var authMiddleware *middleware.AuthMiddleware
 
@@ -94,6 +97,7 @@ func main() {
 		tokenRepo := persistence.NewTokenRepository(database.DB())
 		categoryRepo := persistence.NewCategoryRepository(database.DB())
 		transactionRepo := persistence.NewTransactionRepository(database.DB())
+		goalRepo := persistence.NewGoalRepository(database.DB())
 
 		// Create adapters/services
 		passwordService := adapters.NewPasswordService()
@@ -122,6 +126,13 @@ func main() {
 		deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 		bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
 		bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
+
+		// Create goal use cases
+		listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
+		createGoalUseCase := goal.NewCreateGoalUseCase(goalRepo, categoryRepo)
+		getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
+		updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
+		deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
 
 		// Create auth controller
 		authController = controller.NewAuthController(
@@ -156,17 +167,26 @@ func main() {
 			bulkCategorizeTransactionsUseCase,
 		)
 
+		// Create goal controller
+		goalController = controller.NewGoalController(
+			listGoalsUseCase,
+			createGoalUseCase,
+			getGoalUseCase,
+			updateGoalUseCase,
+			deleteGoalUseCase,
+		)
+
 		// Create middleware
 		loginRateLimiter = middleware.NewRateLimiter()
 		authMiddleware = middleware.NewAuthMiddleware(tokenService)
 
-		slog.Info("Auth, Category, and Transaction systems initialized successfully")
+		slog.Info("Auth, Category, Transaction, and Goal systems initialized successfully")
 	} else {
-		slog.Warn("Auth, Category, and Transaction systems not initialized due to missing database connection")
+		slog.Warn("Auth, Category, Transaction, and Goal systems not initialized due to missing database connection")
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server
