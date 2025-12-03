@@ -10,15 +10,17 @@ import (
 
 // Router holds the Gin engine and controller dependencies.
 type Router struct {
-	engine                *gin.Engine
-	healthController      *controller.HealthController
-	authController        *controller.AuthController
-	userController        *controller.UserController
-	categoryController    *controller.CategoryController
-	transactionController *controller.TransactionController
-	goalController        *controller.GoalController
-	loginRateLimiter      *middleware.RateLimiter
-	authMiddleware        *middleware.AuthMiddleware
+	engine                 *gin.Engine
+	healthController       *controller.HealthController
+	authController         *controller.AuthController
+	userController         *controller.UserController
+	categoryController     *controller.CategoryController
+	transactionController  *controller.TransactionController
+	goalController         *controller.GoalController
+	groupController        *controller.GroupController
+	categoryRuleController *controller.CategoryRuleController
+	loginRateLimiter       *middleware.RateLimiter
+	authMiddleware         *middleware.AuthMiddleware
 }
 
 // NewRouter creates a new router instance with all dependencies.
@@ -29,18 +31,22 @@ func NewRouter(
 	categoryController *controller.CategoryController,
 	transactionController *controller.TransactionController,
 	goalController *controller.GoalController,
+	groupController *controller.GroupController,
+	categoryRuleController *controller.CategoryRuleController,
 	loginRateLimiter *middleware.RateLimiter,
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
 	return &Router{
-		healthController:      healthController,
-		authController:        authController,
-		userController:        userController,
-		categoryController:    categoryController,
-		transactionController: transactionController,
-		goalController:        goalController,
-		loginRateLimiter:      loginRateLimiter,
-		authMiddleware:        authMiddleware,
+		healthController:       healthController,
+		authController:         authController,
+		userController:         userController,
+		categoryController:     categoryController,
+		transactionController:  transactionController,
+		goalController:         goalController,
+		groupController:        groupController,
+		categoryRuleController: categoryRuleController,
+		loginRateLimiter:       loginRateLimiter,
+		authMiddleware:         authMiddleware,
 	}
 }
 
@@ -134,8 +140,46 @@ func (r *Router) setupAPIRoutes() {
 			}
 		}
 
-		// Group routes (to be implemented)
-		_ = v1.Group("/groups")
+		// Group routes (require authentication)
+		if r.groupController != nil && r.authMiddleware != nil {
+			groups := v1.Group("/groups")
+			groups.Use(r.authMiddleware.Authenticate())
+			{
+				groups.POST("", r.groupController.Create)
+				groups.GET("", r.groupController.List)
+				groups.GET("/:id", r.groupController.Get)
+			groups.DELETE("/:id", r.groupController.Delete)
+				groups.GET("/:id/dashboard", r.groupController.GetDashboard)
+				groups.POST("/:id/invite", r.groupController.Invite)
+				groups.PUT("/:id/members/:member_id/role", r.groupController.ChangeRole)
+				groups.DELETE("/:id/members/:member_id", r.groupController.RemoveMember)
+				groups.DELETE("/:id/members/me", r.groupController.Leave)
+				// Group category routes
+				groups.GET("/:id/categories", r.groupController.ListCategories)
+				groups.POST("/:id/categories", r.groupController.CreateCategory)
+			}
+
+			// Invite acceptance route (separate path)
+			invites := v1.Group("/groups/invites")
+			invites.Use(r.authMiddleware.Authenticate())
+			{
+				invites.POST("/:token/accept", r.groupController.AcceptInvite)
+			}
+		}
+
+		// Category rule routes (require authentication)
+		if r.categoryRuleController != nil && r.authMiddleware != nil {
+			categoryRules := v1.Group("/category-rules")
+			categoryRules.Use(r.authMiddleware.Authenticate())
+			{
+				categoryRules.GET("", r.categoryRuleController.List)
+				categoryRules.POST("", r.categoryRuleController.Create)
+				categoryRules.POST("/test", r.categoryRuleController.TestPattern)
+				categoryRules.PATCH("/reorder", r.categoryRuleController.Reorder)
+				categoryRules.PATCH("/:id", r.categoryRuleController.Update)
+				categoryRules.DELETE("/:id", r.categoryRuleController.Delete)
+			}
+		}
 
 		// Dashboard routes (to be implemented)
 		_ = v1.Group("/dashboard")

@@ -177,6 +177,7 @@ Feature: Groups & Collaboration
 
   @success @accept-invite
   Scenario: Accept group invitation
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -192,6 +193,7 @@ Feature: Groups & Collaboration
       """
     Then the response status should be 201
     And the response field "token" should exist
+    Given I am logged in as "maria@example.com"
     When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
     Then the response status should be 200
     And the response should be JSON
@@ -209,6 +211,7 @@ Feature: Groups & Collaboration
 
   @success @change-role
   Scenario: Change member role as admin
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -223,8 +226,10 @@ Feature: Groups & Collaboration
       }
       """
     Then the response status should be 201
+    Given I am logged in as "maria@example.com"
     When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
     Then the response status should be 200
+    Given I am logged in as "test@example.com"
     When I send a "PUT" request to "/api/v1/groups/{{group_id}}/members/{{member_id}}/role" with body:
       """
       {
@@ -237,6 +242,7 @@ Feature: Groups & Collaboration
 
   @failure @change-role @validation
   Scenario: Cannot set invalid role
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -251,8 +257,10 @@ Feature: Groups & Collaboration
       }
       """
     Then the response status should be 201
+    Given I am logged in as "maria@example.com"
     When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
     Then the response status should be 200
+    Given I am logged in as "test@example.com"
     When I send a "PUT" request to "/api/v1/groups/{{group_id}}/members/{{member_id}}/role" with body:
       """
       {
@@ -266,6 +274,7 @@ Feature: Groups & Collaboration
 
   @success @remove-member
   Scenario: Remove member as admin
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -280,8 +289,10 @@ Feature: Groups & Collaboration
       }
       """
     Then the response status should be 201
+    Given I am logged in as "maria@example.com"
     When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
     Then the response status should be 200
+    Given I am logged in as "test@example.com"
     When I send a "DELETE" request to "/api/v1/groups/{{group_id}}/members/{{member_id}}"
     Then the response status should be 204
 
@@ -302,6 +313,7 @@ Feature: Groups & Collaboration
 
   @success @leave
   Scenario: Leave group as member
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -316,8 +328,10 @@ Feature: Groups & Collaboration
       }
       """
     Then the response status should be 201
+    Given I am logged in as "maria@example.com"
     When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
     Then the response status should be 200
+    Given I am logged in as "test@example.com"
     When I send a "PUT" request to "/api/v1/groups/{{group_id}}/members/{{member_id}}/role" with body:
       """
       {
@@ -329,7 +343,8 @@ Feature: Groups & Collaboration
     Then the response status should be 204
 
   @failure @leave @sole-admin
-  Scenario: Cannot leave as sole admin
+  Scenario: Cannot leave as sole admin when other members exist
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -337,6 +352,17 @@ Feature: Groups & Collaboration
       }
       """
     Then the response status should be 201
+    When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite" with body:
+      """
+      {
+        "email": "maria@example.com"
+      }
+      """
+    Then the response status should be 201
+    Given I am logged in as "maria@example.com"
+    When I send a "POST" request to "/api/v1/groups/invites/{{invite_token}}/accept"
+    Then the response status should be 200
+    Given I am logged in as "test@example.com"
     When I send a "DELETE" request to "/api/v1/groups/{{group_id}}/members/me"
     Then the response status should be 400
     And the response should be JSON

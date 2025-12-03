@@ -118,3 +118,61 @@ type GroupListItem struct {
 	Role        MemberRole
 	CreatedAt   time.Time
 }
+
+// GroupDashboardData represents comprehensive dashboard data for a group.
+type GroupDashboardData struct {
+	Summary            *GroupDashboardSummary
+	CategoryBreakdown  []*GroupCategoryBreakdown
+	MemberBreakdown    []*GroupMemberBreakdown
+	Trends             []*GroupTrendPoint
+	RecentTransactions []*GroupDashboardTransaction
+}
+
+// GroupDashboardSummary represents the summary section of the group dashboard.
+type GroupDashboardSummary struct {
+	TotalExpenses  float64
+	TotalIncome    float64
+	NetBalance     float64
+	MemberCount    int
+	ExpensesChange float64
+	IncomeChange   float64
+}
+
+// GroupCategoryBreakdown represents a category's contribution to group expenses/income.
+type GroupCategoryBreakdown struct {
+	CategoryID    uuid.UUID
+	CategoryName  string
+	CategoryColor string
+	Amount        float64
+	Percentage    float64
+}
+
+// GroupMemberBreakdown represents a member's contribution to group expenses/income.
+type GroupMemberBreakdown struct {
+	MemberID         uuid.UUID
+	MemberName       string
+	AvatarURL        string
+	Total            float64
+	Percentage       float64
+	TransactionCount int
+}
+
+// GroupTrendPoint represents a single data point in the trends chart.
+type GroupTrendPoint struct {
+	Date     time.Time
+	Income   float64
+	Expenses float64
+}
+
+// GroupDashboardTransaction represents a transaction in the group dashboard.
+type GroupDashboardTransaction struct {
+	ID              uuid.UUID
+	Description     string
+	Amount          float64
+	Date            time.Time
+	CategoryName    string
+	CategoryColor   string
+	MemberID        uuid.UUID
+	MemberName      string
+	MemberAvatarURL string
+}

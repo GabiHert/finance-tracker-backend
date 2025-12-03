@@ -45,8 +45,8 @@ func NewDeleteAccountUseCase(
 
 // Execute performs the account deletion.
 func (uc *DeleteAccountUseCase) Execute(ctx context.Context, input DeleteAccountInput) (*DeleteAccountOutput, error) {
-	// Validate confirmation text if provided (frontend may validate in UI)
-	if input.Confirmation != "" && input.Confirmation != "DELETE" {
+	// Validate confirmation text - must be exactly "DELETE"
+	if input.Confirmation != "DELETE" {
 		return nil, domainerror.NewAuthError(
 			domainerror.ErrCodeInvalidConfirmation,
 			"confirmation must be exactly 'DELETE'",

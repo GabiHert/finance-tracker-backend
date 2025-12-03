@@ -27,7 +27,9 @@ import (
 
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
+	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
@@ -82,6 +84,9 @@ type testContext struct {
 	currentUserID     uuid.UUID
 	currentCategoryID uuid.UUID
 	currentGoalID     uuid.UUID
+	currentGroupID    uuid.UUID
+	currentMemberID   uuid.UUID
+	currentInviteToken string
 	transactionIDs    []uuid.UUID
 	lastTransactionID uuid.UUID
 }
@@ -120,6 +125,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			"categories":            &model.CategoryModel{},
 			"transactions":          &model.TransactionModel{},
 			"goals":                 &model.GoalModel{},
+			"groups":                &model.GroupModel{},
+			"group_members":         &model.GroupMemberModel{},
+			"group_invites":         &model.GroupInviteModel{},
 		}),
 	}
 
@@ -149,6 +157,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Goal setup steps
 	ctx.Given(`^a goal exists for category "([^"]*)" with limit "([^"]*)"$`, test.aGoalExistsForCategoryWithLimit)
+
+	// Group setup steps
+	ctx.Given(`^I am logged in as "([^"]*)"$`, test.iAmLoggedInAs)
+	ctx.Given(`^the user "([^"]*)" exists$`, test.theUserExists)
 
 	// Header steps
 	ctx.Given(`^the header is empty$`, test.theHeaderIsEmpty)
@@ -188,6 +200,9 @@ func (t *testContext) before() {
 	t.currentUserID = uuid.Nil
 	t.currentCategoryID = uuid.Nil
 	t.currentGoalID = uuid.Nil
+	t.currentGroupID = uuid.Nil
+	t.currentMemberID = uuid.Nil
+	t.currentInviteToken = ""
 	t.transactionIDs = nil
 	t.lastTransactionID = uuid.Nil
 
@@ -207,6 +222,7 @@ func (t *testContext) startServer() {
 			categoryRepo := persistence.NewCategoryRepository(testDB.DbConn)
 			transactionRepo := persistence.NewTransactionRepository(testDB.DbConn)
 			goalRepo := persistence.NewGoalRepository(testDB.DbConn)
+			groupRepo := persistence.NewGroupRepository(testDB.DbConn)
 
 			// Create adapters/services
 			passwordService := adapters.NewPasswordService()
@@ -241,6 +257,29 @@ func (t *testContext) startServer() {
 			getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
 			updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
 			deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
+
+			// Create group use cases
+			createGroupUseCase := group.NewCreateGroupUseCase(groupRepo, userRepo)
+			listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
+			getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
+			inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+			acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
+			changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
+			removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
+			leaveGroupUseCase := group.NewLeaveGroupUseCase(groupRepo)
+			getGroupDashboardUseCase := group.NewGetGroupDashboardUseCase(groupRepo)
+
+			// Create category rule use cases
+			categoryRuleRepo := persistence.NewCategoryRuleRepository(testDB.DbConn)
+			listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
+			createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+			updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+			deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
+			reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
+			testPatternUseCase := categoryrule.NewTestPatternUseCase(categoryRuleRepo)
+
+			// Create user use cases (delete account)
+			deleteAccountUseCase := auth.NewDeleteAccountUseCase(userRepo, passwordService, tokenService)
 
 			// Create controllers
 			healthController := controller.NewHealthController(func() bool {
@@ -280,11 +319,37 @@ func (t *testContext) startServer() {
 				deleteGoalUseCase,
 			)
 
+			groupController := controller.NewGroupController(
+				createGroupUseCase,
+				listGroupsUseCase,
+				getGroupUseCase,
+				inviteMemberUseCase,
+				acceptInviteUseCase,
+				changeMemberRoleUseCase,
+				removeMemberUseCase,
+				leaveGroupUseCase,
+				getGroupDashboardUseCase,
+				listCategoriesUseCase,
+				createCategoryUseCase,
+				groupRepo,
+			)
+
+			categoryRuleController := controller.NewCategoryRuleController(
+				listCategoryRulesUseCase,
+				createCategoryRuleUseCase,
+				updateCategoryRuleUseCase,
+				deleteCategoryRuleUseCase,
+				reorderCategoryRulesUseCase,
+				testPatternUseCase,
+			)
+
+			userController := controller.NewUserController(deleteAccountUseCase)
+
 			// Create middleware
 			loginRateLimiter := middleware.NewRateLimiter()
 			authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
-			r := router.NewRouter(healthController, authController, nil, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
+			r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
 			engine := r.Setup("test")
 
 			addr := fmt.Sprintf(":%d", testServerPort)
@@ -483,6 +548,9 @@ func (t *testContext) replaceTokenPlaceholders(content string) string {
 	content = strings.ReplaceAll(content, "{{category_id}}", t.currentCategoryID.String())
 	content = strings.ReplaceAll(content, "{{goal_id}}", t.currentGoalID.String())
 	content = strings.ReplaceAll(content, "{{transaction_id}}", t.lastTransactionID.String())
+	content = strings.ReplaceAll(content, "{{group_id}}", t.currentGroupID.String())
+	content = strings.ReplaceAll(content, "{{member_id}}", t.currentMemberID.String())
+	content = strings.ReplaceAll(content, "{{invite_token}}", t.currentInviteToken)
 
 	// Handle transaction_ids array placeholder
 	if len(t.transactionIDs) > 0 {
@@ -547,6 +615,46 @@ func (t *testContext) executeRequest(method, path string, payload []byte) error 
 			if id, err := uuid.Parse(idStr); err == nil {
 				t.lastTransactionID = id
 				t.transactionIDs = append(t.transactionIDs, id)
+				// Also capture as group_id ONLY for group responses (has "name" and "members" or "created_by")
+				if _, hasName := responseBody["name"]; hasName {
+					if _, hasMembers := responseBody["members"]; hasMembers {
+						t.currentGroupID = id
+					} else if _, hasCreatedBy := responseBody["created_by"]; hasCreatedBy {
+						t.currentGroupID = id
+					}
+				}
+			}
+		}
+
+		// Capture invite token from response if present
+		if token, ok := responseBody["token"].(string); ok && token != "" {
+			t.currentInviteToken = token
+		}
+
+		// For accept invite response, get group details to capture member_id
+		if groupID, ok := responseBody["group_id"].(string); ok {
+			if gid, err := uuid.Parse(groupID); err == nil {
+				t.currentGroupID = gid
+				// After accepting invite, query for member details
+				// This will be the newly joined member
+				t.fetchMemberIDAfterAcceptInvite()
+			}
+		}
+
+		// Capture member ID from group details response
+		if members, ok := responseBody["members"].([]any); ok && len(members) > 0 {
+			// Get the last added member (non-admin in most cases)
+			for i := len(members) - 1; i >= 0; i-- {
+				if member, ok := members[i].(map[string]any); ok {
+					if role, ok := member["role"].(string); ok && role == "member" {
+						if idStr, ok := member["id"].(string); ok {
+							if id, err := uuid.Parse(idStr); err == nil {
+								t.currentMemberID = id
+								break
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -743,6 +851,127 @@ func (t *testContext) aCategoryExistsWithNameAndType(name, categoryType string) 
 
 	result := t.db.DbConn.Create(categoryModel)
 	return result.Error
+}
+
+// theUserExists creates a user with the given email if they don't already exist.
+func (t *testContext) theUserExists(email string) error {
+	var userModel model.UserModel
+	if err := t.db.DbConn.Where("email = ?", email).First(&userModel).Error; err == nil {
+		// User already exists
+		return nil
+	}
+
+	// Create the user
+	userID := uuid.New()
+	user := &model.UserModel{
+		ID:                 userID,
+		Email:              email,
+		Name:               "Test User " + email,
+		PasswordHash:       hashPassword("SecurePass123!"),
+		DateFormat:         "YYYY-MM-DD",
+		NumberFormat:       "US",
+		FirstDayOfWeek:     "sunday",
+		EmailNotifications: true,
+		GoalAlerts:         true,
+		RecurringReminders: true,
+		TermsAcceptedAt:    time.Now(),
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+	}
+
+	result := t.db.DbConn.Create(user)
+	return result.Error
+}
+
+// iAmLoggedInAs switches the current logged in user to the specified email.
+func (t *testContext) iAmLoggedInAs(email string) error {
+	// First ensure the user exists
+	if err := t.theUserExists(email); err != nil {
+		return err
+	}
+
+	// Find the user
+	var userModel model.UserModel
+	if err := t.db.DbConn.Where("email = ?", email).First(&userModel).Error; err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	// Update current user ID
+	t.currentUserID = userModel.ID
+
+	// Generate new tokens for this user
+	now := time.Now().UTC()
+
+	// Generate access token
+	accessClaims := jwt.MapClaims{
+		"user_id":    t.currentUserID.String(),
+		"email":      email,
+		"token_type": "access",
+		"exp":        jwt.NewNumericDate(now.Add(15 * time.Minute)),
+		"iat":        jwt.NewNumericDate(now),
+		"nbf":        jwt.NewNumericDate(now),
+		"iss":        "finance-tracker",
+		"sub":        t.currentUserID.String(),
+	}
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessTokenString, err := accessToken.SignedString([]byte(testJWTSecret))
+	if err != nil {
+		return fmt.Errorf("failed to generate access token: %w", err)
+	}
+	t.accessToken = accessTokenString
+
+	// Generate refresh token
+	refreshClaims := jwt.MapClaims{
+		"user_id":    t.currentUserID.String(),
+		"email":      email,
+		"token_type": "refresh",
+		"exp":        jwt.NewNumericDate(now.Add(7 * 24 * time.Hour)),
+		"iat":        jwt.NewNumericDate(now),
+		"nbf":        jwt.NewNumericDate(now),
+		"iss":        "finance-tracker",
+		"sub":        t.currentUserID.String(),
+	}
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshTokenString, err := refreshToken.SignedString([]byte(testJWTSecret))
+	if err != nil {
+		return fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+	t.refreshToken = refreshTokenString
+
+	// Check if refresh token already exists and update it, otherwise create
+	var existingToken model.RefreshTokenModel
+	if err := t.db.DbConn.Where("user_id = ?", t.currentUserID).First(&existingToken).Error; err == nil {
+		// Update existing token
+		existingToken.Token = t.refreshToken
+		existingToken.Invalidated = false
+		existingToken.ExpiresAt = now.Add(7 * 24 * time.Hour)
+		return t.db.DbConn.Save(&existingToken).Error
+	}
+
+	// Create new token
+	refreshTokenModel := &model.RefreshTokenModel{
+		ID:          uuid.New(),
+		Token:       t.refreshToken,
+		UserID:      t.currentUserID,
+		Invalidated: false,
+		ExpiresAt:   now.Add(7 * 24 * time.Hour),
+		CreatedAt:   now,
+	}
+
+	result := t.db.DbConn.Create(refreshTokenModel)
+	return result.Error
+}
+
+// fetchMemberIDAfterAcceptInvite queries the database to get the member ID of the newly joined member.
+func (t *testContext) fetchMemberIDAfterAcceptInvite() {
+	// Query the database directly for the member with role "member" in the current group
+	var memberModel model.GroupMemberModel
+	if err := t.db.DbConn.
+		Where("group_id = ? AND role = ?", t.currentGroupID, "member").
+		Order("joined_at DESC").
+		First(&memberModel).Error; err == nil {
+		t.currentMemberID = memberModel.ID
+	}
 }
 
 // aGoalExistsForCategoryWithLimit creates a goal for the specified category with the given limit amount.

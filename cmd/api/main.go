@@ -16,7 +16,9 @@ import (
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
+	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/db"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
@@ -65,6 +67,10 @@ func main() {
 			&model.CategoryModel{},
 			&model.TransactionModel{},
 			&model.GoalModel{},
+			&model.GroupModel{},
+			&model.GroupMemberModel{},
+			&model.GroupInviteModel{},
+			&model.CategoryRuleModel{},
 		); err != nil {
 			slog.Error("Failed to run database migrations", "error", err)
 			os.Exit(1)
@@ -88,6 +94,8 @@ func main() {
 	var categoryController *controller.CategoryController
 	var transactionController *controller.TransactionController
 	var goalController *controller.GoalController
+	var groupController *controller.GroupController
+	var categoryRuleController *controller.CategoryRuleController
 	var loginRateLimiter *middleware.RateLimiter
 	var authMiddleware *middleware.AuthMiddleware
 
@@ -98,6 +106,8 @@ func main() {
 		categoryRepo := persistence.NewCategoryRepository(database.DB())
 		transactionRepo := persistence.NewTransactionRepository(database.DB())
 		goalRepo := persistence.NewGoalRepository(database.DB())
+		groupRepo := persistence.NewGroupRepository(database.DB())
+		categoryRuleRepo := persistence.NewCategoryRuleRepository(database.DB())
 
 		// Create adapters/services
 		passwordService := adapters.NewPasswordService()
@@ -133,6 +143,26 @@ func main() {
 		getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
 		updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
 		deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
+
+		// Create group use cases
+		createGroupUseCase := group.NewCreateGroupUseCase(groupRepo, userRepo)
+		listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
+		getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
+		deleteGroupUseCase := group.NewDeleteGroupUseCase(groupRepo)
+		inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+		acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
+		changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
+		removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
+		leaveGroupUseCase := group.NewLeaveGroupUseCase(groupRepo)
+		getGroupDashboardUseCase := group.NewGetGroupDashboardUseCase(groupRepo)
+
+		// Create category rule use cases
+		listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
+		createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+		updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+		deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
+		reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
+		testPatternUseCase := categoryrule.NewTestPatternUseCase(categoryRuleRepo)
 
 		// Create auth controller
 		authController = controller.NewAuthController(
@@ -176,17 +206,44 @@ func main() {
 			deleteGoalUseCase,
 		)
 
+		// Create group controller
+		groupController = controller.NewGroupController(
+			createGroupUseCase,
+			listGroupsUseCase,
+			getGroupUseCase,
+			deleteGroupUseCase,
+			inviteMemberUseCase,
+			acceptInviteUseCase,
+			changeMemberRoleUseCase,
+			removeMemberUseCase,
+			leaveGroupUseCase,
+			getGroupDashboardUseCase,
+			listCategoriesUseCase,
+			createCategoryUseCase,
+			groupRepo,
+		)
+
+		// Create category rule controller
+		categoryRuleController = controller.NewCategoryRuleController(
+			listCategoryRulesUseCase,
+			createCategoryRuleUseCase,
+			updateCategoryRuleUseCase,
+			deleteCategoryRuleUseCase,
+			reorderCategoryRulesUseCase,
+			testPatternUseCase,
+		)
+
 		// Create middleware
 		loginRateLimiter = middleware.NewRateLimiter()
 		authMiddleware = middleware.NewAuthMiddleware(tokenService)
 
-		slog.Info("Auth, Category, Transaction, and Goal systems initialized successfully")
+		slog.Info("Auth, Category, Transaction, Goal, Group, and CategoryRule systems initialized successfully")
 	} else {
-		slog.Warn("Auth, Category, Transaction, and Goal systems not initialized due to missing database connection")
+		slog.Warn("Auth, Category, Transaction, Goal, and Group systems not initialized due to missing database connection")
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server

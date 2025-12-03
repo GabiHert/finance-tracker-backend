@@ -9,7 +9,9 @@ import (
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
+	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
+	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
@@ -33,6 +35,8 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	categoryRepo := persistence.NewCategoryRepository(db)
 	transactionRepo := persistence.NewTransactionRepository(db)
 	goalRepo := persistence.NewGoalRepository(db)
+	groupRepo := persistence.NewGroupRepository(db)
+	categoryRuleRepo := persistence.NewCategoryRuleRepository(db)
 
 	// Create adapters/services
 	passwordService := adapters.NewPasswordService()
@@ -68,6 +72,26 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	getGoalUseCase := goal.NewGetGoalUseCase(goalRepo, categoryRepo)
 	updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
 	deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
+
+	// Create group use cases
+	createGroupUseCase := group.NewCreateGroupUseCase(groupRepo, userRepo)
+	listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
+	getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
+	deleteGroupUseCase := group.NewDeleteGroupUseCase(groupRepo)
+	inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+	acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
+	changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
+	removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
+	leaveGroupUseCase := group.NewLeaveGroupUseCase(groupRepo)
+	getGroupDashboardUseCase := group.NewGetGroupDashboardUseCase(groupRepo)
+
+	// Create category rule use cases
+	listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
+	createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+	updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+	deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
+	reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
+	testPatternUseCase := categoryrule.NewTestPatternUseCase(categoryRuleRepo)
 
 	// Create controllers
 	healthController := controller.NewHealthController(func() bool {
@@ -115,6 +139,31 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		deleteGoalUseCase,
 	)
 
+	groupController := controller.NewGroupController(
+		createGroupUseCase,
+		listGroupsUseCase,
+		getGroupUseCase,
+		deleteGroupUseCase,
+		inviteMemberUseCase,
+		acceptInviteUseCase,
+		changeMemberRoleUseCase,
+		removeMemberUseCase,
+		leaveGroupUseCase,
+		getGroupDashboardUseCase,
+		listCategoriesUseCase,
+		createCategoryUseCase,
+		groupRepo,
+	)
+
+	categoryRuleController := controller.NewCategoryRuleController(
+		listCategoryRulesUseCase,
+		createCategoryRuleUseCase,
+		updateCategoryRuleUseCase,
+		deleteCategoryRuleUseCase,
+		reorderCategoryRulesUseCase,
+		testPatternUseCase,
+	)
+
 	// Create middleware
 	// Use higher rate limits for E2E/test environments to prevent flaky tests
 	var loginRateLimiter *middleware.RateLimiter
@@ -126,7 +175,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

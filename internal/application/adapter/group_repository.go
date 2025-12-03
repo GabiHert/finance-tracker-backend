@@ -3,6 +3,7 @@ package adapter
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -67,4 +68,10 @@ type GroupRepository interface {
 
 	// GetGroupWithMembers retrieves a group with its members and pending invites.
 	GetGroupWithMembers(ctx context.Context, groupID uuid.UUID) (*entity.GroupWithMembers, error)
+
+	// GetGroupDashboard retrieves comprehensive dashboard data for a group.
+	GetGroupDashboard(ctx context.Context, groupID uuid.UUID, startDate, endDate time.Time) (*entity.GroupDashboardData, error)
+
+	// GetGroupDashboardPreviousPeriod retrieves dashboard totals for comparison period.
+	GetGroupDashboardPreviousPeriod(ctx context.Context, groupID uuid.UUID, startDate, endDate time.Time) (totalExpenses, totalIncome float64, err error)
 }
