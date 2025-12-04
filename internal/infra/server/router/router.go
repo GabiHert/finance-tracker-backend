@@ -16,6 +16,7 @@ type Router struct {
 	userController         *controller.UserController
 	categoryController     *controller.CategoryController
 	transactionController  *controller.TransactionController
+	creditCardController   *controller.CreditCardController
 	goalController         *controller.GoalController
 	groupController        *controller.GroupController
 	categoryRuleController *controller.CategoryRuleController
@@ -30,6 +31,7 @@ func NewRouter(
 	userController *controller.UserController,
 	categoryController *controller.CategoryController,
 	transactionController *controller.TransactionController,
+	creditCardController *controller.CreditCardController,
 	goalController *controller.GoalController,
 	groupController *controller.GroupController,
 	categoryRuleController *controller.CategoryRuleController,
@@ -42,6 +44,7 @@ func NewRouter(
 		userController:         userController,
 		categoryController:     categoryController,
 		transactionController:  transactionController,
+		creditCardController:   creditCardController,
 		goalController:         goalController,
 		groupController:        groupController,
 		categoryRuleController: categoryRuleController,
@@ -115,6 +118,17 @@ func (r *Router) setupAPIRoutes() {
 				transactions.DELETE("/:id", r.transactionController.Delete)
 				transactions.POST("/bulk-delete", r.transactionController.BulkDelete)
 				transactions.POST("/bulk-categorize", r.transactionController.BulkCategorize)
+
+				// Credit card import routes (nested under transactions)
+				if r.creditCardController != nil {
+					creditCard := transactions.Group("/credit-card")
+					{
+						creditCard.POST("/preview", r.creditCardController.Preview)
+						creditCard.POST("/import", r.creditCardController.Import)
+						creditCard.POST("/collapse", r.creditCardController.Collapse)
+						creditCard.GET("/status", r.creditCardController.GetStatus)
+					}
+				}
 			}
 		}
 

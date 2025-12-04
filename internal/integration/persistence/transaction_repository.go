@@ -288,3 +288,323 @@ func (r *transactionRepository) ExistsAllByIDsAndUser(ctx context.Context, ids [
 	}
 	return count == int64(len(ids)), nil
 }
+
+// BulkUpdateCategoryByPattern updates category for uncategorized transactions matching pattern.
+func (r *transactionRepository) BulkUpdateCategoryByPattern(
+	ctx context.Context,
+	pattern string,
+	categoryID uuid.UUID,
+	ownerType entity.OwnerType,
+	ownerID uuid.UUID,
+) (int, error) {
+	var result *gorm.DB
+	now := time.Now().UTC()
+
+	if ownerType == entity.OwnerTypeUser {
+		// For user: update transactions belonging to user that have no category
+		result = r.db.WithContext(ctx).
+			Model(&model.TransactionModel{}).
+			Where("user_id = ?", ownerID).
+			Where("category_id IS NULL").
+			Where("description ~* ?", pattern).
+			Updates(map[string]interface{}{
+				"category_id": categoryID,
+				"updated_at":  now,
+			})
+	} else {
+		// For group: update transactions belonging to any group member that have no category
+		result = r.db.WithContext(ctx).
+			Model(&model.TransactionModel{}).
+			Where("user_id IN (SELECT user_id FROM group_members WHERE group_id = ? AND deleted_at IS NULL)", ownerID).
+			Where("category_id IS NULL").
+			Where("description ~* ?", pattern).
+			Updates(map[string]interface{}{
+				"category_id": categoryID,
+				"updated_at":  now,
+			})
+	}
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return int(result.RowsAffected), nil
+}
+
+// Credit card import methods
+
+// FindPotentialBillPayments finds potential bill payment matches for CC import.
+// It searches for transactions matching "Pagamento de fatura" or similar patterns
+// within the specified date range.
+func (r *transactionRepository) FindPotentialBillPayments(
+	ctx context.Context,
+	userID uuid.UUID,
+	startDate time.Time,
+	endDate time.Time,
+) ([]*entity.Transaction, error) {
+	var transactionModels []model.TransactionModel
+
+	// Search for bill payment patterns - typically "Pagamento de fatura" or similar
+	// These are expense transactions (negative amounts in the bank statement)
+	result := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Where("date >= ? AND date <= ?", startDate, endDate).
+		Where("type = ?", string(entity.TransactionTypeExpense)).
+		Where("is_credit_card_payment = ? OR description ~* ?", true, "pagamento.*fatura|fatura.*cartao|cartao.*credito").
+		Where("expanded_at IS NULL"). // Exclude already expanded bills
+		Order("date DESC").
+		Find(&transactionModels)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	transactions := make([]*entity.Transaction, len(transactionModels))
+	for i, tm := range transactionModels {
+		transactions[i] = tm.ToEntity()
+	}
+
+	return transactions, nil
+}
+
+// GetLinkedTransactions retrieves all CC transactions linked to a bill payment.
+func (r *transactionRepository) GetLinkedTransactions(
+	ctx context.Context,
+	billPaymentID uuid.UUID,
+) ([]*entity.Transaction, error) {
+	var transactionModels []model.TransactionModel
+
+	result := r.db.WithContext(ctx).
+		Where("credit_card_payment_id = ?", billPaymentID).
+		Order("date DESC, created_at DESC").
+		Find(&transactionModels)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	transactions := make([]*entity.Transaction, len(transactionModels))
+	for i, tm := range transactionModels {
+		transactions[i] = tm.ToEntity()
+	}
+
+	return transactions, nil
+}
+
+// BulkCreateCCTransactions creates multiple CC transactions in a single operation.
+// It also updates the bill payment (zeroing amount, setting expanded_at, etc.).
+func (r *transactionRepository) BulkCreateCCTransactions(
+	ctx context.Context,
+	transactions []*entity.Transaction,
+	billPaymentID uuid.UUID,
+	originalAmount decimal.Decimal,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+
+		// Create all CC transactions
+		for _, txn := range transactions {
+			transactionModel := model.TransactionFromEntity(txn)
+			if err := tx.Create(transactionModel).Error; err != nil {
+				return err
+			}
+		}
+
+		// Update the bill payment: zero amount, set original_amount, set expanded_at
+		result := tx.Model(&model.TransactionModel{}).
+			Where("id = ?", billPaymentID).
+			Updates(map[string]interface{}{
+				"original_amount":       originalAmount,
+				"amount":                decimal.Zero,
+				"expanded_at":           now,
+				"is_credit_card_payment": true,
+				"updated_at":            now,
+			})
+
+		if result.Error != nil {
+			return result.Error
+		}
+
+		return nil
+	})
+}
+
+// ExpandBillPayment marks a bill payment as expanded and zeroes its amount.
+func (r *transactionRepository) ExpandBillPayment(
+	ctx context.Context,
+	billPaymentID uuid.UUID,
+	originalAmount decimal.Decimal,
+) error {
+	now := time.Now().UTC()
+
+	result := r.db.WithContext(ctx).
+		Model(&model.TransactionModel{}).
+		Where("id = ?", billPaymentID).
+		Updates(map[string]interface{}{
+			"original_amount":       originalAmount,
+			"amount":                decimal.Zero,
+			"expanded_at":           now,
+			"is_credit_card_payment": true,
+			"updated_at":            now,
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	return nil
+}
+
+// CollapseExpansion deletes all linked CC transactions and restores the bill payment.
+func (r *transactionRepository) CollapseExpansion(ctx context.Context, billPaymentID uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+
+		// First, get the original amount from the bill payment
+		var billPayment model.TransactionModel
+		if err := tx.Where("id = ?", billPaymentID).First(&billPayment).Error; err != nil {
+			return err
+		}
+
+		// Delete all linked CC transactions (hard delete)
+		if err := tx.Unscoped().
+			Where("credit_card_payment_id = ?", billPaymentID).
+			Delete(&model.TransactionModel{}).Error; err != nil {
+			return err
+		}
+
+		// Restore the bill payment: restore original_amount to amount, clear expanded_at
+		updates := map[string]interface{}{
+			"expanded_at": nil,
+			"updated_at":  now,
+		}
+
+		// If original_amount is set, restore it to amount
+		if billPayment.OriginalAmount != nil {
+			updates["amount"] = *billPayment.OriginalAmount
+			updates["original_amount"] = nil
+		}
+
+		result := tx.Model(&model.TransactionModel{}).
+			Where("id = ?", billPaymentID).
+			Updates(updates)
+
+		return result.Error
+	})
+}
+
+// GetCreditCardStatus retrieves the CC status for a specific billing cycle.
+func (r *transactionRepository) GetCreditCardStatus(
+	ctx context.Context,
+	userID uuid.UUID,
+	billingCycle string,
+) (*adapter.CreditCardStatus, error) {
+	// Find bill payment for this billing cycle (by billing_cycle field or date range)
+	var billPayment model.TransactionModel
+
+	// First try to find by explicit billing_cycle
+	result := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Where("is_credit_card_payment = ?", true).
+		Where("billing_cycle = ?", billingCycle).
+		First(&billPayment)
+
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, result.Error
+	}
+
+	// If not found by billing_cycle, try to find by expanded CC transactions
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// Look for any expanded bill with linked transactions in this billing cycle
+		var linkedTxn model.TransactionModel
+		result = r.db.WithContext(ctx).
+			Where("user_id = ?", userID).
+			Where("billing_cycle = ?", billingCycle).
+			Where("credit_card_payment_id IS NOT NULL").
+			First(&linkedTxn)
+
+		if result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				// No CC data for this billing cycle
+				return &adapter.CreditCardStatus{
+					BillingCycle:       billingCycle,
+					IsExpanded:         false,
+					LinkedTransactions: []*entity.Transaction{},
+				}, nil
+			}
+			return nil, result.Error
+		}
+
+		// Found linked transaction, get the bill payment
+		if linkedTxn.CreditCardPaymentID != nil {
+			if err := r.db.WithContext(ctx).
+				Where("id = ?", *linkedTxn.CreditCardPaymentID).
+				First(&billPayment).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Get linked transactions
+	linkedTransactions, err := r.GetLinkedTransactions(ctx, billPayment.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	status := &adapter.CreditCardStatus{
+		BillingCycle:       billingCycle,
+		IsExpanded:         billPayment.ExpandedAt != nil,
+		BillPaymentID:      &billPayment.ID,
+		BillPaymentDate:    &billPayment.Date,
+		CurrentAmount:      &billPayment.Amount,
+		LinkedTransactions: linkedTransactions,
+		ExpandedAt:         billPayment.ExpandedAt,
+	}
+
+	if billPayment.OriginalAmount != nil {
+		status.OriginalAmount = billPayment.OriginalAmount
+	}
+
+	return status, nil
+}
+
+// IsBillExpanded checks if a bill payment has been expanded.
+func (r *transactionRepository) IsBillExpanded(ctx context.Context, billPaymentID uuid.UUID) (bool, error) {
+	var billPayment model.TransactionModel
+
+	result := r.db.WithContext(ctx).
+		Select("expanded_at").
+		Where("id = ?", billPaymentID).
+		First(&billPayment)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return false, domainerror.ErrBillPaymentNotFound
+		}
+		return false, result.Error
+	}
+
+	return billPayment.ExpandedAt != nil, nil
+}
+
+// FindBillPaymentByID retrieves a bill payment transaction by ID with ownership check.
+func (r *transactionRepository) FindBillPaymentByID(
+	ctx context.Context,
+	id uuid.UUID,
+	userID uuid.UUID,
+) (*entity.Transaction, error) {
+	var transactionModel model.TransactionModel
+
+	result := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", id, userID).
+		First(&transactionModel)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, domainerror.ErrBillPaymentNotFound
+		}
+		return nil, result.Error
+	}
+
+	return transactionModel.ToEntity(), nil
+}

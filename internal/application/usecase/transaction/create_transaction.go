@@ -4,6 +4,8 @@ package transaction
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,18 +42,21 @@ type CreateTransactionOutput struct {
 
 // CreateTransactionUseCase handles transaction creation logic.
 type CreateTransactionUseCase struct {
-	transactionRepo adapter.TransactionRepository
-	categoryRepo    adapter.CategoryRepository
+	transactionRepo  adapter.TransactionRepository
+	categoryRepo     adapter.CategoryRepository
+	categoryRuleRepo adapter.CategoryRuleRepository
 }
 
 // NewCreateTransactionUseCase creates a new CreateTransactionUseCase instance.
 func NewCreateTransactionUseCase(
 	transactionRepo adapter.TransactionRepository,
 	categoryRepo adapter.CategoryRepository,
+	categoryRuleRepo adapter.CategoryRuleRepository,
 ) *CreateTransactionUseCase {
 	return &CreateTransactionUseCase{
-		transactionRepo: transactionRepo,
-		categoryRepo:    categoryRepo,
+		transactionRepo:  transactionRepo,
+		categoryRepo:     categoryRepo,
+		categoryRuleRepo: categoryRuleRepo,
 	}
 }
 
@@ -84,7 +89,7 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 		)
 	}
 
-	// Validate category if provided
+	// Validate category if provided, or auto-categorize if not
 	var category *entity.Category
 	if input.CategoryID != nil {
 		cat, err := uc.categoryRepo.FindByID(ctx, *input.CategoryID)
@@ -106,6 +111,13 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 		}
 
 		category = cat
+	} else {
+		// Auto-categorize: try to match transaction description against category rules
+		matchedCategoryID, matchedCategory := uc.autoCategorize(ctx, input.UserID, input.Description)
+		if matchedCategoryID != nil {
+			input.CategoryID = matchedCategoryID
+			category = matchedCategory
+		}
 	}
 
 	// Create transaction entity
@@ -159,4 +171,68 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 // isValidTransactionType validates the transaction type.
 func isValidTransactionType(transactionType entity.TransactionType) bool {
 	return transactionType == entity.TransactionTypeExpense || transactionType == entity.TransactionTypeIncome
+}
+
+// autoCategorize attempts to match the transaction description against the user's category rules.
+// It returns the matched category ID and category entity if a match is found, or nil if no match.
+// Rules are already sorted by priority (highest first) from the repository.
+// This method does not fail the transaction creation if rule matching fails - it logs and continues.
+func (uc *CreateTransactionUseCase) autoCategorize(
+	ctx context.Context,
+	userID uuid.UUID,
+	description string,
+) (*uuid.UUID, *entity.Category) {
+	// Fetch all active rules for the user, sorted by priority (descending)
+	rules, err := uc.categoryRuleRepo.FindActiveByOwner(ctx, entity.OwnerTypeUser, userID)
+	if err != nil {
+		slog.Debug("Failed to fetch category rules for auto-categorization",
+			"userID", userID,
+			"error", err,
+		)
+		return nil, nil
+	}
+
+	if len(rules) == 0 {
+		return nil, nil
+	}
+
+	// Try to match each rule against the description
+	for _, rule := range rules {
+		// Create case-insensitive regex pattern
+		pattern := "(?i)" + rule.Pattern
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			slog.Debug("Invalid regex pattern in category rule",
+				"ruleID", rule.ID,
+				"pattern", rule.Pattern,
+				"error", err,
+			)
+			continue
+		}
+
+		if re.MatchString(description) {
+			// Found a match - fetch the category to return with the transaction
+			category, err := uc.categoryRepo.FindByID(ctx, rule.CategoryID)
+			if err != nil {
+				slog.Debug("Failed to fetch category for matched rule",
+					"ruleID", rule.ID,
+					"categoryID", rule.CategoryID,
+					"error", err,
+				)
+				continue
+			}
+
+			slog.Debug("Auto-categorized transaction",
+				"userID", userID,
+				"description", description,
+				"ruleID", rule.ID,
+				"categoryID", rule.CategoryID,
+				"categoryName", category.Name,
+			)
+
+			return &rule.CategoryID, category
+		}
+	}
+
+	return nil, nil
 }

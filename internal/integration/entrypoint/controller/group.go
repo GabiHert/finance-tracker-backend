@@ -483,25 +483,67 @@ func (c *GroupController) GetDashboard(ctx *gin.Context) {
 		return
 	}
 
-	// Parse period from query parameter
-	periodStr := ctx.Query("period")
-	period := group.PeriodThisMonth // Default to this month
-	switch periodStr {
-	case "this_month":
-		period = group.PeriodThisMonth
-	case "last_month":
-		period = group.PeriodLastMonth
-	case "this_week":
-		period = group.PeriodThisWeek
-	case "last_week":
-		period = group.PeriodLastWeek
-	}
-
 	// Build input
 	input := group.GetGroupDashboardInput{
 		GroupID: groupID,
 		UserID:  userID,
-		Period:  period,
+	}
+
+	// Parse custom date range query parameters (format: YYYY-MM-DD)
+	startDateStr := ctx.Query("start_date")
+	endDateStr := ctx.Query("end_date")
+
+	if startDateStr != "" && endDateStr != "" {
+		// Parse start_date
+		startDate, err := time.Parse("2006-01-02", startDateStr)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Error: "Invalid start_date format. Expected YYYY-MM-DD",
+			})
+			return
+		}
+
+		// Parse end_date
+		endDate, err := time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Error: "Invalid end_date format. Expected YYYY-MM-DD",
+			})
+			return
+		}
+
+		// Validate end_date >= start_date
+		if endDate.Before(startDate) {
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Error: "end_date must be greater than or equal to start_date",
+			})
+			return
+		}
+
+		// Set custom dates in input (custom dates override period)
+		input.StartDate = &startDate
+		input.EndDate = &endDate
+	} else if startDateStr != "" || endDateStr != "" {
+		// Only one date provided - both are required for custom range
+		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error: "Both start_date and end_date are required for custom date range",
+		})
+		return
+	} else {
+		// No custom dates - use period-based filtering
+		periodStr := ctx.Query("period")
+		period := group.PeriodThisMonth // Default to this month
+		switch periodStr {
+		case "this_month":
+			period = group.PeriodThisMonth
+		case "last_month":
+			period = group.PeriodLastMonth
+		case "this_week":
+			period = group.PeriodThisWeek
+		case "last_week":
+			period = group.PeriodLastWeek
+		}
+		input.Period = period
 	}
 
 	// Execute use case

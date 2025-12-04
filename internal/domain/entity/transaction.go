@@ -31,6 +31,16 @@ type Transaction struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time // Soft-delete support
+
+	// Credit card import fields
+	CreditCardPaymentID *uuid.UUID      // References the bill payment transaction this CC transaction belongs to
+	BillingCycle        string          // Format: "YYYY-MM" (e.g., "2025-11")
+	OriginalAmount      *decimal.Decimal // Original bill amount before zeroing (only for bill payments)
+	IsCreditCardPayment bool            // True if this is a "Pagamento de fatura" transaction
+	ExpandedAt          *time.Time      // When the bill was expanded with CC transactions
+	InstallmentCurrent  *int            // Current installment number (e.g., 1 in "Parcela 1/3")
+	InstallmentTotal    *int            // Total installments (e.g., 3 in "Parcela 1/3")
+	IsHidden            bool            // True for "Pagamento recebido" entries that should be hidden
 }
 
 // NewTransaction creates a new Transaction entity.

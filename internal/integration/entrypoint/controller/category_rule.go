@@ -131,6 +131,7 @@ func (c *CategoryRuleController) Create(ctx *gin.Context) {
 
 	// Build response
 	response := dto.ToCategoryRuleResponse(output.Rule)
+	response.TransactionsUpdated = output.TransactionsUpdated
 	ctx.JSON(http.StatusCreated, response)
 }
 

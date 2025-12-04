@@ -27,9 +27,20 @@ type TransactionModel struct {
 	UpdatedAt   time.Time       `gorm:"not null"`
 	DeletedAt   gorm.DeletedAt  `gorm:"index"` // Soft-delete support
 
+	// Credit card import fields
+	CreditCardPaymentID *uuid.UUID      `gorm:"type:uuid;index"`
+	BillingCycle        string          `gorm:"type:varchar(7)"`
+	OriginalAmount      *decimal.Decimal `gorm:"type:decimal(12,2)"`
+	IsCreditCardPayment bool            `gorm:"default:false"`
+	ExpandedAt          *time.Time      `gorm:"type:timestamp"`
+	InstallmentCurrent  *int            `gorm:"type:integer"`
+	InstallmentTotal    *int            `gorm:"type:integer"`
+	IsHidden            bool            `gorm:"default:false"`
+
 	// Relationships (not loaded by default, use Preload)
-	Category *CategoryModel `gorm:"foreignKey:CategoryID;references:ID"`
-	User     *UserModel     `gorm:"foreignKey:UserID;references:ID"`
+	Category          *CategoryModel     `gorm:"foreignKey:CategoryID;references:ID"`
+	User              *UserModel         `gorm:"foreignKey:UserID;references:ID"`
+	CreditCardPayment *TransactionModel  `gorm:"foreignKey:CreditCardPaymentID;references:ID"`
 }
 
 // TableName returns the table name for the TransactionModel.
@@ -58,6 +69,15 @@ func (m *TransactionModel) ToEntity() *entity.Transaction {
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 		DeletedAt:   deletedAt,
+		// Credit card fields
+		CreditCardPaymentID: m.CreditCardPaymentID,
+		BillingCycle:        m.BillingCycle,
+		OriginalAmount:      m.OriginalAmount,
+		IsCreditCardPayment: m.IsCreditCardPayment,
+		ExpandedAt:          m.ExpandedAt,
+		InstallmentCurrent:  m.InstallmentCurrent,
+		InstallmentTotal:    m.InstallmentTotal,
+		IsHidden:            m.IsHidden,
 	}
 }
 
@@ -95,5 +115,14 @@ func TransactionFromEntity(transaction *entity.Transaction) *TransactionModel {
 		CreatedAt:   transaction.CreatedAt,
 		UpdatedAt:   transaction.UpdatedAt,
 		DeletedAt:   deletedAt,
+		// Credit card fields
+		CreditCardPaymentID: transaction.CreditCardPaymentID,
+		BillingCycle:        transaction.BillingCycle,
+		OriginalAmount:      transaction.OriginalAmount,
+		IsCreditCardPayment: transaction.IsCreditCardPayment,
+		ExpandedAt:          transaction.ExpandedAt,
+		InstallmentCurrent:  transaction.InstallmentCurrent,
+		InstallmentTotal:    transaction.InstallmentTotal,
+		IsHidden:            transaction.IsHidden,
 	}
 }

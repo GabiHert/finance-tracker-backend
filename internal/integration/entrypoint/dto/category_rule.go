@@ -41,18 +41,19 @@ type TestPatternRequest struct {
 
 // CategoryRuleResponse represents a single category rule in API responses.
 type CategoryRuleResponse struct {
-	ID            string   `json:"id"`
-	Pattern       string   `json:"pattern"`
-	CategoryID    string   `json:"category_id"`
-	CategoryName  string   `json:"category_name,omitempty"`
-	CategoryIcon  string   `json:"category_icon,omitempty"`
-	CategoryColor string   `json:"category_color,omitempty"`
-	Priority      int      `json:"priority"`
-	IsActive      bool     `json:"is_active"`
-	OwnerType     string   `json:"owner_type"`
-	OwnerID       string   `json:"owner_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	Pattern             string    `json:"pattern"`
+	CategoryID          string    `json:"category_id"`
+	CategoryName        string    `json:"category_name,omitempty"`
+	CategoryIcon        string    `json:"category_icon,omitempty"`
+	CategoryColor       string    `json:"category_color,omitempty"`
+	Priority            int       `json:"priority"`
+	IsActive            bool      `json:"is_active"`
+	OwnerType           string    `json:"owner_type"`
+	OwnerID             string    `json:"owner_id"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	TransactionsUpdated int       `json:"transactions_updated,omitempty"`
 }
 
 // CategoryRuleListResponse represents the response for listing category rules.

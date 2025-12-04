@@ -17,6 +17,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
+	creditcard "github.com/finance-tracker/backend/internal/application/usecase/credit_card"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
@@ -93,6 +94,7 @@ func main() {
 	var userController *controller.UserController
 	var categoryController *controller.CategoryController
 	var transactionController *controller.TransactionController
+	var creditCardController *controller.CreditCardController
 	var goalController *controller.GoalController
 	var groupController *controller.GroupController
 	var categoryRuleController *controller.CategoryRuleController
@@ -131,11 +133,17 @@ func main() {
 
 		// Create transaction use cases
 		listTransactionsUseCase := transaction.NewListTransactionsUseCase(transactionRepo)
-		createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo)
+		createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
 		updateTransactionUseCase := transaction.NewUpdateTransactionUseCase(transactionRepo, categoryRepo)
 		deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 		bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
 		bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
+
+		// Create credit card use cases
+		previewImportUseCase := creditcard.NewPreviewImportUseCase(transactionRepo)
+		importTransactionsUseCase := creditcard.NewImportTransactionsUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
+		collapseExpansionUseCase := creditcard.NewCollapseExpansionUseCase(transactionRepo)
+		getStatusUseCase := creditcard.NewGetStatusUseCase(transactionRepo)
 
 		// Create goal use cases
 		listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
@@ -158,7 +166,7 @@ func main() {
 
 		// Create category rule use cases
 		listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
-		createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+		createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo, transactionRepo)
 		updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
 		deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
 		reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
@@ -195,6 +203,14 @@ func main() {
 			deleteTransactionUseCase,
 			bulkDeleteTransactionsUseCase,
 			bulkCategorizeTransactionsUseCase,
+		)
+
+		// Create credit card controller
+		creditCardController = controller.NewCreditCardController(
+			previewImportUseCase,
+			importTransactionsUseCase,
+			collapseExpansionUseCase,
+			getStatusUseCase,
 		)
 
 		// Create goal controller
@@ -243,7 +259,7 @@ func main() {
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server

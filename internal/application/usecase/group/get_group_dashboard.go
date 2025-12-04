@@ -25,9 +25,11 @@ const (
 
 // GetGroupDashboardInput represents the input for getting group dashboard data.
 type GetGroupDashboardInput struct {
-	GroupID uuid.UUID
-	UserID  uuid.UUID
-	Period  DashboardPeriod
+	GroupID   uuid.UUID
+	UserID    uuid.UUID
+	Period    DashboardPeriod
+	StartDate *time.Time // Optional: for custom date range
+	EndDate   *time.Time // Optional: for custom date range
 }
 
 // GetGroupDashboardOutput represents the output of getting group dashboard data.
@@ -62,9 +64,21 @@ func (uc *GetGroupDashboardUseCase) Execute(ctx context.Context, input GetGroupD
 		)
 	}
 
-	// Calculate date ranges based on period
-	startDate, endDate := uc.calculateDateRange(input.Period)
-	prevStartDate, prevEndDate := uc.calculatePreviousPeriodRange(input.Period, startDate, endDate)
+	// Calculate date ranges - use custom dates if provided, otherwise use period
+	var startDate, endDate time.Time
+	var prevStartDate, prevEndDate time.Time
+
+	if input.StartDate != nil && input.EndDate != nil {
+		// Use custom date range
+		startDate = *input.StartDate
+		endDate = *input.EndDate
+		// Calculate previous period as same duration, ending the day before start date
+		prevStartDate, prevEndDate = uc.calculateCustomPreviousPeriod(startDate, endDate)
+	} else {
+		// Fall back to period-based calculation
+		startDate, endDate = uc.calculateDateRange(input.Period)
+		prevStartDate, prevEndDate = uc.calculatePreviousPeriodRange(input.Period, startDate, endDate)
+	}
 
 	// Get dashboard data for current period
 	dashboard, err := uc.groupRepo.GetGroupDashboard(ctx, input.GroupID, startDate, endDate)
@@ -180,4 +194,18 @@ func (uc *GetGroupDashboardUseCase) calculatePercentChange(previous, current flo
 		return 100 // Infinite increase represented as 100%
 	}
 	return ((current - previous) / previous) * 100
+}
+
+// calculateCustomPreviousPeriod calculates the previous period for a custom date range.
+// The previous period has the same duration and ends the day before the current period starts.
+func (uc *GetGroupDashboardUseCase) calculateCustomPreviousPeriod(startDate, endDate time.Time) (time.Time, time.Time) {
+	// Calculate duration of the custom period (inclusive of both start and end dates)
+	duration := endDate.Sub(startDate)
+
+	// Previous period ends the day before the current period starts
+	prevEndDate := startDate.AddDate(0, 0, -1)
+	// Previous period has the same duration
+	prevStartDate := prevEndDate.Add(-duration)
+
+	return prevStartDate, prevEndDate
 }

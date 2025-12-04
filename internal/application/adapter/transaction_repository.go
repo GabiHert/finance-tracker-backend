@@ -83,4 +83,73 @@ type TransactionRepository interface {
 
 	// ExistsAllByIDsAndUser checks if all transactions exist for the given IDs and user.
 	ExistsAllByIDsAndUser(ctx context.Context, ids []uuid.UUID, userID uuid.UUID) (bool, error)
+
+	// BulkUpdateCategoryByPattern updates category for all uncategorized transactions
+	// matching the given pattern for the specified owner.
+	BulkUpdateCategoryByPattern(
+		ctx context.Context,
+		pattern string,
+		categoryID uuid.UUID,
+		ownerType entity.OwnerType,
+		ownerID uuid.UUID,
+	) (int, error)
+
+	// Credit card import methods
+
+	// FindPotentialBillPayments finds potential bill payment matches for CC import.
+	// It searches for transactions matching "Pagamento de fatura" or similar patterns.
+	// Returns transactions within the specified date range that could match CC payments.
+	FindPotentialBillPayments(
+		ctx context.Context,
+		userID uuid.UUID,
+		startDate time.Time,
+		endDate time.Time,
+	) ([]*entity.Transaction, error)
+
+	// GetLinkedTransactions retrieves all CC transactions linked to a bill payment.
+	GetLinkedTransactions(ctx context.Context, billPaymentID uuid.UUID) ([]*entity.Transaction, error)
+
+	// BulkCreateCCTransactions creates multiple CC transactions in a single operation.
+	// It also updates the bill payment (zeroing amount, setting expanded_at, etc.).
+	BulkCreateCCTransactions(
+		ctx context.Context,
+		transactions []*entity.Transaction,
+		billPaymentID uuid.UUID,
+		originalAmount decimal.Decimal,
+	) error
+
+	// ExpandBillPayment marks a bill payment as expanded and zeroes its amount.
+	ExpandBillPayment(
+		ctx context.Context,
+		billPaymentID uuid.UUID,
+		originalAmount decimal.Decimal,
+	) error
+
+	// CollapseExpansion deletes all linked CC transactions and restores the bill payment.
+	CollapseExpansion(ctx context.Context, billPaymentID uuid.UUID) error
+
+	// GetCreditCardStatus retrieves the CC status for a specific billing cycle.
+	GetCreditCardStatus(
+		ctx context.Context,
+		userID uuid.UUID,
+		billingCycle string,
+	) (*CreditCardStatus, error)
+
+	// IsBillExpanded checks if a bill payment has been expanded.
+	IsBillExpanded(ctx context.Context, billPaymentID uuid.UUID) (bool, error)
+
+	// FindBillPaymentByID retrieves a bill payment transaction by ID with ownership check.
+	FindBillPaymentByID(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*entity.Transaction, error)
+}
+
+// CreditCardStatus represents the status of credit card transactions for a billing cycle.
+type CreditCardStatus struct {
+	BillingCycle       string
+	IsExpanded         bool
+	BillPaymentID      *uuid.UUID
+	BillPaymentDate    *time.Time
+	OriginalAmount     *decimal.Decimal
+	CurrentAmount      *decimal.Decimal
+	LinkedTransactions []*entity.Transaction
+	ExpandedAt         *time.Time
 }

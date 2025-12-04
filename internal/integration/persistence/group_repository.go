@@ -379,19 +379,16 @@ func (r *groupRepository) getGroupDashboardSummary(ctx context.Context, groupID 
 		TotalIncome   float64
 	}
 
-	// Query for transactions linked to group categories within the period
+	// Query for transactions from all group members within the period
 	query := `
 		SELECT
 			COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) as total_expenses,
 			COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) as total_income
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.date >= ?
 		  AND t.date <= ?
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 	`
 
 	if err := r.db.WithContext(ctx).Raw(query, groupID, startDate, endDate).Scan(&result).Error; err != nil {
@@ -420,18 +417,16 @@ func (r *groupRepository) getGroupCategoryBreakdown(ctx context.Context, groupID
 	query := `
 		SELECT
 			c.id as category_id,
-			c.name as category_name,
-			c.color as category_color,
+			COALESCE(c.name, 'Sem categoria') as category_name,
+			COALESCE(c.color, '#9CA3AF') as category_color,
 			COALESCE(SUM(ABS(t.amount)), 0) as amount
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		LEFT JOIN categories c ON c.id = t.category_id
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.type = 'expense'
 		  AND t.date >= ?
 		  AND t.date <= ?
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 		GROUP BY c.id, c.name, c.color
 		ORDER BY amount DESC
 	`
@@ -472,14 +467,11 @@ func (r *groupRepository) getGroupMemberBreakdown(ctx context.Context, groupID u
 			COALESCE(SUM(ABS(t.amount)), 0) as total,
 			COUNT(*) as transaction_count
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.type = 'expense'
 		  AND t.date >= ?
 		  AND t.date <= ?
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 		GROUP BY t.user_id
 		ORDER BY total DESC
 	`
@@ -529,13 +521,10 @@ func (r *groupRepository) getGroupTrends(ctx context.Context, groupID uuid.UUID,
 			COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) as income,
 			COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) as expenses
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.date >= ?
 		  AND t.date <= ?
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 		GROUP BY t.date
 		ORDER BY t.date ASC
 	`
@@ -576,15 +565,13 @@ func (r *groupRepository) getGroupRecentTransactions(ctx context.Context, groupI
 			t.amount,
 			t.date,
 			t.type,
-			c.name as category_name,
-			c.color as category_color,
+			COALESCE(c.name, 'Sem categoria') as category_name,
+			COALESCE(c.color, '#9CA3AF') as category_color,
 			t.user_id
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		LEFT JOIN categories c ON c.id = t.category_id
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 		ORDER BY t.date DESC, t.created_at DESC
 		LIMIT ?
 	`
@@ -636,13 +623,10 @@ func (r *groupRepository) GetGroupDashboardPreviousPeriod(ctx context.Context, g
 			COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) as total_expenses,
 			COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) as total_income
 		FROM transactions t
-		INNER JOIN categories c ON c.id = t.category_id
-		WHERE c.owner_type = 'group'
-		  AND c.owner_id = ?
+		WHERE t.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
 		  AND t.date >= ?
 		  AND t.date <= ?
 		  AND t.deleted_at IS NULL
-		  AND c.deleted_at IS NULL
 	`
 
 	if err := r.db.WithContext(ctx).Raw(query, groupID, startDate, endDate).Scan(&result).Error; err != nil {

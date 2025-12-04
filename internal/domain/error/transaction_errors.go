@@ -37,6 +37,29 @@ var (
 
 	// ErrTransactionIDsNotFound is returned when one or more transaction IDs are not found.
 	ErrTransactionIDsNotFound = errors.New("one or more transactions not found")
+
+	// Credit card import errors.
+
+	// ErrInvalidBillingCycle is returned when the billing cycle format is invalid.
+	ErrInvalidBillingCycle = errors.New("invalid billing cycle format")
+
+	// ErrBillPaymentNotFound is returned when the bill payment transaction is not found.
+	ErrBillPaymentNotFound = errors.New("bill payment transaction not found")
+
+	// ErrBillNotExpanded is returned when trying to collapse a bill that is not expanded.
+	ErrBillNotExpanded = errors.New("bill is not expanded")
+
+	// ErrBillAlreadyExpanded is returned when trying to expand an already expanded bill.
+	ErrBillAlreadyExpanded = errors.New("bill is already expanded")
+
+	// ErrNoPotentialMatches is returned when no potential bill matches are found.
+	ErrNoPotentialMatches = errors.New("no potential bill payment matches found")
+
+	// ErrEmptyCCTransactions is returned when no CC transactions are provided.
+	ErrEmptyCCTransactions = errors.New("credit card transactions list cannot be empty")
+
+	// ErrBillPaymentNotOwned is returned when bill payment does not belong to user.
+	ErrBillPaymentNotOwned = errors.New("bill payment does not belong to user")
 )
 
 // TransactionErrorCode defines error codes for transaction errors.
@@ -45,18 +68,27 @@ type TransactionErrorCode string
 
 const (
 	// Validation errors (01XXXX)
-	ErrCodeInvalidTransactionType       TransactionErrorCode = "TXN-010001"
-	ErrCodeInvalidTransactionDate       TransactionErrorCode = "TXN-010002"
-	ErrCodeInvalidTransactionAmount     TransactionErrorCode = "TXN-010003"
-	ErrCodeTransactionNotFound          TransactionErrorCode = "TXN-010004"
-	ErrCodeNotAuthorizedTransaction     TransactionErrorCode = "TXN-010005"
-	ErrCodeTxnCategoryNotFound          TransactionErrorCode = "TXN-010006"
-	ErrCodeTxnCategoryNotOwned          TransactionErrorCode = "TXN-010007"
-	ErrCodeDescriptionTooLong           TransactionErrorCode = "TXN-010008"
-	ErrCodeNotesTooLong                 TransactionErrorCode = "TXN-010009"
-	ErrCodeMissingTransactionFields     TransactionErrorCode = "TXN-010010"
-	ErrCodeEmptyTransactionIDs          TransactionErrorCode = "TXN-010011"
-	ErrCodeTransactionIDsNotFound       TransactionErrorCode = "TXN-010012"
+	ErrCodeInvalidTransactionType   TransactionErrorCode = "TXN-010001"
+	ErrCodeInvalidTransactionDate   TransactionErrorCode = "TXN-010002"
+	ErrCodeInvalidTransactionAmount TransactionErrorCode = "TXN-010003"
+	ErrCodeTransactionNotFound      TransactionErrorCode = "TXN-010004"
+	ErrCodeNotAuthorizedTransaction TransactionErrorCode = "TXN-010005"
+	ErrCodeTxnCategoryNotFound      TransactionErrorCode = "TXN-010006"
+	ErrCodeTxnCategoryNotOwned      TransactionErrorCode = "TXN-010007"
+	ErrCodeDescriptionTooLong       TransactionErrorCode = "TXN-010008"
+	ErrCodeNotesTooLong             TransactionErrorCode = "TXN-010009"
+	ErrCodeMissingTransactionFields TransactionErrorCode = "TXN-010010"
+	ErrCodeEmptyTransactionIDs      TransactionErrorCode = "TXN-010011"
+	ErrCodeTransactionIDsNotFound   TransactionErrorCode = "TXN-010012"
+
+	// Credit card import errors (02XXXX)
+	ErrCodeInvalidBillingCycle  TransactionErrorCode = "TXN-020001"
+	ErrCodeBillPaymentNotFound  TransactionErrorCode = "TXN-020002"
+	ErrCodeBillNotExpanded      TransactionErrorCode = "TXN-020003"
+	ErrCodeBillAlreadyExpanded  TransactionErrorCode = "TXN-020004"
+	ErrCodeNoPotentialMatches   TransactionErrorCode = "TXN-020005"
+	ErrCodeEmptyCCTransactions  TransactionErrorCode = "TXN-020006"
+	ErrCodeBillPaymentNotOwned  TransactionErrorCode = "TXN-020007"
 )
 
 // TransactionError represents a transaction error with code and message.

@@ -29,23 +29,27 @@ type CreateCategoryRuleInput struct {
 
 // CreateCategoryRuleOutput represents the output of category rule creation.
 type CreateCategoryRuleOutput struct {
-	Rule *entity.CategoryRuleWithCategory
+	Rule                *entity.CategoryRuleWithCategory
+	TransactionsUpdated int
 }
 
 // CreateCategoryRuleUseCase handles category rule creation logic.
 type CreateCategoryRuleUseCase struct {
-	ruleRepo     adapter.CategoryRuleRepository
-	categoryRepo adapter.CategoryRepository
+	ruleRepo        adapter.CategoryRuleRepository
+	categoryRepo    adapter.CategoryRepository
+	transactionRepo adapter.TransactionRepository
 }
 
 // NewCreateCategoryRuleUseCase creates a new CreateCategoryRuleUseCase instance.
 func NewCreateCategoryRuleUseCase(
 	ruleRepo adapter.CategoryRuleRepository,
 	categoryRepo adapter.CategoryRepository,
+	transactionRepo adapter.TransactionRepository,
 ) *CreateCategoryRuleUseCase {
 	return &CreateCategoryRuleUseCase{
-		ruleRepo:     ruleRepo,
-		categoryRepo: categoryRepo,
+		ruleRepo:        ruleRepo,
+		categoryRepo:    categoryRepo,
+		transactionRepo: transactionRepo,
 	}
 }
 
@@ -146,11 +150,30 @@ func (uc *CreateCategoryRuleUseCase) Execute(ctx context.Context, input CreateCa
 		return nil, fmt.Errorf("failed to create category rule: %w", err)
 	}
 
+	// Apply rule to existing uncategorized transactions
+	updatedCount := 0
+	if rule.IsActive {
+		count, err := uc.transactionRepo.BulkUpdateCategoryByPattern(
+			ctx,
+			rule.Pattern,
+			rule.CategoryID,
+			input.OwnerType,
+			input.OwnerID,
+		)
+		if err != nil {
+			// Log warning but don't fail - rule was created successfully
+			// Just return 0 for updated count
+		} else {
+			updatedCount = count
+		}
+	}
+
 	return &CreateCategoryRuleOutput{
 		Rule: &entity.CategoryRuleWithCategory{
 			Rule:     rule,
 			Category: category,
 		},
+		TransactionsUpdated: updatedCount,
 	}, nil
 }
 

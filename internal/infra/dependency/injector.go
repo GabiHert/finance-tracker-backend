@@ -10,6 +10,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
+	creditcard "github.com/finance-tracker/backend/internal/application/usecase/credit_card"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
@@ -60,11 +61,17 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 
 	// Create transaction use cases
 	listTransactionsUseCase := transaction.NewListTransactionsUseCase(transactionRepo)
-	createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo)
+	createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
 	updateTransactionUseCase := transaction.NewUpdateTransactionUseCase(transactionRepo, categoryRepo)
 	deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 	bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
 	bulkCategorizeTransactionsUseCase := transaction.NewBulkCategorizeTransactionsUseCase(transactionRepo, categoryRepo)
+
+	// Create credit card use cases
+	previewImportUseCase := creditcard.NewPreviewImportUseCase(transactionRepo)
+	importTransactionsUseCase := creditcard.NewImportTransactionsUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
+	collapseExpansionUseCase := creditcard.NewCollapseExpansionUseCase(transactionRepo)
+	getStatusUseCase := creditcard.NewGetStatusUseCase(transactionRepo)
 
 	// Create goal use cases
 	listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
@@ -87,7 +94,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 
 	// Create category rule use cases
 	listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
-	createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+	createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo, transactionRepo)
 	updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
 	deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
 	reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
@@ -129,6 +136,13 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		deleteTransactionUseCase,
 		bulkDeleteTransactionsUseCase,
 		bulkCategorizeTransactionsUseCase,
+	)
+
+	creditCardController := controller.NewCreditCardController(
+		previewImportUseCase,
+		importTransactionsUseCase,
+		collapseExpansionUseCase,
+		getStatusUseCase,
 	)
 
 	goalController := controller.NewGoalController(
@@ -175,7 +189,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,
