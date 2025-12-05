@@ -165,17 +165,21 @@ func (uc *UpdateTransactionUseCase) Execute(ctx context.Context, input UpdateTra
 	// Build output
 	output := &UpdateTransactionOutput{
 		Transaction: &TransactionOutput{
-			ID:          transaction.ID,
-			UserID:      transaction.UserID,
-			Date:        transaction.Date,
-			Description: transaction.Description,
-			Amount:      transaction.Amount,
-			Type:        transaction.Type,
-			CategoryID:  transaction.CategoryID,
-			Notes:       transaction.Notes,
-			IsRecurring: transaction.IsRecurring,
-			CreatedAt:   transaction.CreatedAt,
-			UpdatedAt:   transaction.UpdatedAt,
+			ID:                 transaction.ID,
+			UserID:             transaction.UserID,
+			Date:               transaction.Date,
+			Description:        transaction.Description,
+			Amount:             transaction.Amount,
+			Type:               transaction.Type,
+			CategoryID:         transaction.CategoryID,
+			Notes:              transaction.Notes,
+			IsRecurring:        transaction.IsRecurring,
+			CreatedAt:          transaction.CreatedAt,
+			UpdatedAt:          transaction.UpdatedAt,
+			BillingCycle:       transaction.BillingCycle,
+			IsExpandedBill:     transaction.ExpandedAt != nil,
+			InstallmentCurrent: transaction.InstallmentCurrent,
+			InstallmentTotal:   transaction.InstallmentTotal,
 		},
 	}
 

@@ -54,10 +54,21 @@ func NewGetStatusUseCase(transactionRepo adapter.TransactionRepository) *GetStat
 
 // Execute retrieves the CC status for a billing cycle.
 func (uc *GetStatusUseCase) Execute(ctx context.Context, input GetStatusInput) (*GetStatusOutput, error) {
-	// Default to current month if billing cycle not provided
 	billingCycle := input.BillingCycle
+
+	// If no billing cycle specified, find the most recent one with CC transactions
 	if billingCycle == "" {
-		billingCycle = time.Now().Format("2006-01")
+		recentCycle, err := uc.transactionRepo.FindMostRecentCCBillingCycle(ctx, input.UserID)
+		if err != nil {
+			return nil, err
+		}
+
+		// If found, use it; otherwise default to current month
+		if recentCycle != "" {
+			billingCycle = recentCycle
+		} else {
+			billingCycle = time.Now().Format("2006-01")
+		}
 	}
 
 	// Validate billing cycle format

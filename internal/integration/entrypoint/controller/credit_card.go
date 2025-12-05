@@ -154,13 +154,17 @@ func (c *CreditCardController) Import(ctx *gin.Context) {
 		return
 	}
 
-	// Parse bill payment ID
-	billPaymentID, err := uuid.Parse(req.BillPaymentID)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
-			Error: "Invalid bill payment ID format",
-		})
-		return
+	// Parse bill payment ID (optional - can be empty for standalone imports)
+	var billPaymentID *uuid.UUID
+	if req.BillPaymentID != "" {
+		parsed, err := uuid.Parse(req.BillPaymentID)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Error: "Invalid bill payment ID format",
+			})
+			return
+		}
+		billPaymentID = &parsed
 	}
 
 	// Convert DTOs to use case input
@@ -219,11 +223,15 @@ func (c *CreditCardController) Import(ctx *gin.Context) {
 	response := dto.ImportResultDTO{
 		ImportedCount:      output.ImportedCount,
 		CategorizedCount:   output.CategorizedCount,
-		BillPaymentID:      output.BillPaymentID.String(),
 		BillingCycle:       output.BillingCycle,
 		OriginalBillAmount: output.OriginalBillAmount.String(),
 		ImportedAt:         output.ImportedAt,
 		Transactions:       transactionSummaries,
+	}
+
+	// Set bill payment ID if it exists
+	if output.BillPaymentID != nil {
+		response.BillPaymentID = output.BillPaymentID.String()
 	}
 
 	ctx.JSON(http.StatusCreated, response)

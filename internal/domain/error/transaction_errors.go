@@ -89,6 +89,9 @@ const (
 	ErrCodeNoPotentialMatches   TransactionErrorCode = "TXN-020005"
 	ErrCodeEmptyCCTransactions  TransactionErrorCode = "TXN-020006"
 	ErrCodeBillPaymentNotOwned  TransactionErrorCode = "TXN-020007"
+
+	// Internal errors (99XXXX)
+	ErrCodeInternalError TransactionErrorCode = "TXN-990001"
 )
 
 // TransactionError represents a transaction error with code and message.

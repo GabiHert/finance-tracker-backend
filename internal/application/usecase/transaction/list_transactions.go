@@ -39,6 +39,12 @@ type TransactionOutput struct {
 	IsRecurring bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Credit card import fields
+	BillingCycle           string // "YYYY-MM" format if imported from CC statement
+	IsExpandedBill         bool   // True if this is a bill payment that has been expanded
+	LinkedTransactionCount int    // Number of CC transactions linked to this bill
+	InstallmentCurrent     *int   // Current installment number
+	InstallmentTotal       *int   // Total installments
 }
 
 // CategoryOutput represents category information in transaction output.
@@ -147,17 +153,22 @@ func (uc *ListTransactionsUseCase) Execute(ctx context.Context, input ListTransa
 
 	for i, txnWithCat := range result.Transactions {
 		txnOutput := &TransactionOutput{
-			ID:          txnWithCat.Transaction.ID,
-			UserID:      txnWithCat.Transaction.UserID,
-			Date:        txnWithCat.Transaction.Date,
-			Description: txnWithCat.Transaction.Description,
-			Amount:      txnWithCat.Transaction.Amount,
-			Type:        txnWithCat.Transaction.Type,
-			CategoryID:  txnWithCat.Transaction.CategoryID,
-			Notes:       txnWithCat.Transaction.Notes,
-			IsRecurring: txnWithCat.Transaction.IsRecurring,
-			CreatedAt:   txnWithCat.Transaction.CreatedAt,
-			UpdatedAt:   txnWithCat.Transaction.UpdatedAt,
+			ID:                     txnWithCat.Transaction.ID,
+			UserID:                 txnWithCat.Transaction.UserID,
+			Date:                   txnWithCat.Transaction.Date,
+			Description:            txnWithCat.Transaction.Description,
+			Amount:                 txnWithCat.Transaction.Amount,
+			Type:                   txnWithCat.Transaction.Type,
+			CategoryID:             txnWithCat.Transaction.CategoryID,
+			Notes:                  txnWithCat.Transaction.Notes,
+			IsRecurring:            txnWithCat.Transaction.IsRecurring,
+			CreatedAt:              txnWithCat.Transaction.CreatedAt,
+			UpdatedAt:              txnWithCat.Transaction.UpdatedAt,
+			BillingCycle:           txnWithCat.Transaction.BillingCycle,
+			IsExpandedBill:         txnWithCat.Transaction.ExpandedAt != nil,
+			LinkedTransactionCount: txnWithCat.LinkedTransactionCount,
+			InstallmentCurrent:     txnWithCat.Transaction.InstallmentCurrent,
+			InstallmentTotal:       txnWithCat.Transaction.InstallmentTotal,
 		}
 
 		// Add category if present

@@ -50,7 +50,7 @@ type ImportPreviewResponseDTO struct {
 // ImportRequestDTO represents the request for importing CC transactions.
 type ImportRequestDTO struct {
 	BillingCycle      string                     `json:"billing_cycle" binding:"required"` // Format: "YYYY-MM"
-	BillPaymentID     string                     `json:"bill_payment_id" binding:"required"`
+	BillPaymentID     string                     `json:"bill_payment_id"`                  // Optional - if empty, imports as standalone CC transactions
 	Transactions      []CreditCardTransactionDTO `json:"transactions" binding:"required,min=1"`
 	ApplyAutoCategory bool                       `json:"apply_auto_category"` // Whether to apply category rules
 }

@@ -3,6 +3,7 @@ package creditcard
 
 import (
 	"context"
+	"errors"
 	"math"
 	"regexp"
 	"sort"
@@ -104,6 +105,15 @@ func (uc *PreviewImportUseCase) Execute(ctx context.Context, input PreviewImport
 	// Check if billing cycle already has imported transactions
 	status, err := uc.transactionRepo.GetCreditCardStatus(ctx, input.UserID, input.BillingCycle)
 	if err != nil {
+		// Wrap database errors in TransactionError for proper error handling
+		var txnErr *domainerror.TransactionError
+		if !errors.As(err, &txnErr) {
+			return nil, domainerror.NewTransactionError(
+				domainerror.ErrCodeInternalError,
+				"failed to check credit card status",
+				err,
+			)
+		}
 		return nil, err
 	}
 
@@ -134,6 +144,15 @@ func (uc *PreviewImportUseCase) Execute(ctx context.Context, input PreviewImport
 	startDate, endDate := calculateSearchDateRange(input.BillingCycle)
 	potentialBills, err := uc.transactionRepo.FindPotentialBillPayments(ctx, input.UserID, startDate, endDate)
 	if err != nil {
+		// Wrap database errors in TransactionError for proper error handling
+		var txnErr *domainerror.TransactionError
+		if !errors.As(err, &txnErr) {
+			return nil, domainerror.NewTransactionError(
+				domainerror.ErrCodeInternalError,
+				"failed to find potential bill payments",
+				err,
+			)
+		}
 		return nil, err
 	}
 

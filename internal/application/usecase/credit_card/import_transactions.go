@@ -19,7 +19,7 @@ import (
 type ImportTransactionsInput struct {
 	UserID            uuid.UUID
 	BillingCycle      string
-	BillPaymentID     uuid.UUID
+	BillPaymentID     *uuid.UUID // Optional - nil for standalone imports without linked bill
 	Transactions      []CCTransactionInput
 	ApplyAutoCategory bool
 }
@@ -37,7 +37,7 @@ type ImportedTransactionSummary struct {
 type ImportTransactionsOutput struct {
 	ImportedCount      int
 	CategorizedCount   int
-	BillPaymentID      uuid.UUID
+	BillPaymentID      *uuid.UUID // nil for standalone imports
 	BillingCycle       string
 	OriginalBillAmount decimal.Decimal
 	ImportedAt         time.Time
@@ -84,30 +84,38 @@ func (uc *ImportTransactionsUseCase) Execute(ctx context.Context, input ImportTr
 		)
 	}
 
-	// Verify bill payment exists and belongs to user
-	billPayment, err := uc.transactionRepo.FindBillPaymentByID(ctx, input.BillPaymentID, input.UserID)
-	if err != nil {
-		if err == domainerror.ErrBillPaymentNotFound {
+	var originalBillAmount decimal.Decimal
+
+	// If bill payment ID is provided, verify and validate it
+	if input.BillPaymentID != nil {
+		// Verify bill payment exists and belongs to user
+		billPayment, err := uc.transactionRepo.FindBillPaymentByID(ctx, *input.BillPaymentID, input.UserID)
+		if err != nil {
+			if err == domainerror.ErrBillPaymentNotFound {
+				return nil, domainerror.NewTransactionError(
+					domainerror.ErrCodeBillPaymentNotFound,
+					"bill payment transaction not found",
+					domainerror.ErrBillPaymentNotFound,
+				)
+			}
+			return nil, err
+		}
+
+		// Check if bill is already expanded
+		isExpanded, err := uc.transactionRepo.IsBillExpanded(ctx, *input.BillPaymentID)
+		if err != nil {
+			return nil, err
+		}
+		if isExpanded {
 			return nil, domainerror.NewTransactionError(
-				domainerror.ErrCodeBillPaymentNotFound,
-				"bill payment transaction not found",
-				domainerror.ErrBillPaymentNotFound,
+				domainerror.ErrCodeBillAlreadyExpanded,
+				"bill is already expanded with credit card transactions",
+				domainerror.ErrBillAlreadyExpanded,
 			)
 		}
-		return nil, err
-	}
 
-	// Check if bill is already expanded
-	isExpanded, err := uc.transactionRepo.IsBillExpanded(ctx, input.BillPaymentID)
-	if err != nil {
-		return nil, err
-	}
-	if isExpanded {
-		return nil, domainerror.NewTransactionError(
-			domainerror.ErrCodeBillAlreadyExpanded,
-			"bill is already expanded with credit card transactions",
-			domainerror.ErrBillAlreadyExpanded,
-		)
+		// Save the original bill amount before zeroing
+		originalBillAmount = billPayment.Amount.Abs()
 	}
 
 	// Prepare category rules for auto-categorization if enabled
@@ -131,6 +139,9 @@ func (uc *ImportTransactionsUseCase) Execute(ctx context.Context, input ImportTr
 	categorizedCount := 0
 	paymentReceivedRegex := regexp.MustCompile(PaymentReceivedPattern)
 
+	// Calculate total amount for standalone imports
+	totalAmount := decimal.Zero
+
 	for _, txnInput := range input.Transactions {
 		// Determine if this is a "Pagamento recebido" entry
 		isPaymentReceived := paymentReceivedRegex.MatchString(txnInput.Description)
@@ -143,13 +154,18 @@ func (uc *ImportTransactionsUseCase) Execute(ctx context.Context, input ImportTr
 			Description:         txnInput.Description,
 			Amount:              txnInput.Amount,
 			Type:                entity.TransactionTypeExpense, // CC transactions are expenses
-			CreditCardPaymentID: &input.BillPaymentID,
+			CreditCardPaymentID: input.BillPaymentID,          // nil for standalone imports
 			BillingCycle:        input.BillingCycle,
 			InstallmentCurrent:  txnInput.InstallmentCurrent,
 			InstallmentTotal:    txnInput.InstallmentTotal,
 			IsHidden:            isPaymentReceived, // Hide "Pagamento recebido" entries
 			CreatedAt:           now,
 			UpdatedAt:           now,
+		}
+
+		// Track total amount for standalone imports
+		if !isPaymentReceived {
+			totalAmount = totalAmount.Add(txnInput.Amount.Abs())
 		}
 
 		// Apply auto-categorization if enabled and not a payment received entry
@@ -171,17 +187,28 @@ func (uc *ImportTransactionsUseCase) Execute(ctx context.Context, input ImportTr
 		})
 	}
 
-	// Save the original bill amount before zeroing
-	originalBillAmount := billPayment.Amount.Abs()
+	// For standalone imports (no bill payment), use total amount as reference
+	if input.BillPaymentID == nil {
+		originalBillAmount = totalAmount
+	}
 
-	// Create all CC transactions and update bill payment in a single transaction
-	if err := uc.transactionRepo.BulkCreateCCTransactions(
-		ctx,
-		transactions,
-		input.BillPaymentID,
-		originalBillAmount,
-	); err != nil {
-		return nil, err
+	// Create all CC transactions and optionally update bill payment
+	if input.BillPaymentID != nil {
+		// Import with linked bill - use the bulk create with bill update
+		if err := uc.transactionRepo.BulkCreateCCTransactions(
+			ctx,
+			transactions,
+			*input.BillPaymentID,
+			originalBillAmount,
+			input.BillingCycle,
+		); err != nil {
+			return nil, err
+		}
+	} else {
+		// Standalone import - just create the transactions without updating any bill
+		if err := uc.transactionRepo.BulkCreateStandaloneCCTransactions(ctx, transactions); err != nil {
+			return nil, err
+		}
 	}
 
 	return &ImportTransactionsOutput{

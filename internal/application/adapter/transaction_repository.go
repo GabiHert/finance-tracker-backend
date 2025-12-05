@@ -110,13 +110,18 @@ type TransactionRepository interface {
 	GetLinkedTransactions(ctx context.Context, billPaymentID uuid.UUID) ([]*entity.Transaction, error)
 
 	// BulkCreateCCTransactions creates multiple CC transactions in a single operation.
-	// It also updates the bill payment (zeroing amount, setting expanded_at, etc.).
+	// It also updates the bill payment (zeroing amount, setting expanded_at, billing_cycle, etc.).
 	BulkCreateCCTransactions(
 		ctx context.Context,
 		transactions []*entity.Transaction,
 		billPaymentID uuid.UUID,
 		originalAmount decimal.Decimal,
+		billingCycle string,
 	) error
+
+	// BulkCreateStandaloneCCTransactions creates CC transactions without linking to a bill payment.
+	// Used when importing CC transactions without a matching bill.
+	BulkCreateStandaloneCCTransactions(ctx context.Context, transactions []*entity.Transaction) error
 
 	// ExpandBillPayment marks a bill payment as expanded and zeroes its amount.
 	ExpandBillPayment(
@@ -140,6 +145,10 @@ type TransactionRepository interface {
 
 	// FindBillPaymentByID retrieves a bill payment transaction by ID with ownership check.
 	FindBillPaymentByID(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*entity.Transaction, error)
+
+	// FindMostRecentCCBillingCycle finds the most recent billing cycle with CC transactions.
+	// Returns empty string if no CC transactions exist.
+	FindMostRecentCCBillingCycle(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
 // CreditCardStatus represents the status of credit card transactions for a billing cycle.

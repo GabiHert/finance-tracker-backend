@@ -64,6 +64,12 @@ type TransactionResponse struct {
 	IsRecurring bool                         `json:"is_recurring"`
 	CreatedAt   time.Time                    `json:"created_at"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
+	// Credit card import fields
+	BillingCycle           string `json:"billing_cycle,omitempty"`
+	IsExpandedBill         bool   `json:"is_expanded_bill,omitempty"`
+	LinkedTransactionCount int    `json:"linked_transaction_count,omitempty"`
+	InstallmentCurrent     *int   `json:"installment_current,omitempty"`
+	InstallmentTotal       *int   `json:"installment_total,omitempty"`
 }
 
 // TransactionPaginationResponse represents pagination information in API responses.
@@ -101,16 +107,21 @@ type BulkCategorizeTransactionsResponse struct {
 // ToTransactionResponse converts a TransactionOutput to a TransactionResponse DTO.
 func ToTransactionResponse(txn *transaction.TransactionOutput) TransactionResponse {
 	response := TransactionResponse{
-		ID:          txn.ID.String(),
-		UserID:      txn.UserID.String(),
-		Date:        txn.Date.Format("2006-01-02"),
-		Description: txn.Description,
-		Amount:      txn.Amount.String(),
-		Type:        string(txn.Type),
-		Notes:       txn.Notes,
-		IsRecurring: txn.IsRecurring,
-		CreatedAt:   txn.CreatedAt,
-		UpdatedAt:   txn.UpdatedAt,
+		ID:                     txn.ID.String(),
+		UserID:                 txn.UserID.String(),
+		Date:                   txn.Date.Format("2006-01-02"),
+		Description:            txn.Description,
+		Amount:                 txn.Amount.String(),
+		Type:                   string(txn.Type),
+		Notes:                  txn.Notes,
+		IsRecurring:            txn.IsRecurring,
+		CreatedAt:              txn.CreatedAt,
+		UpdatedAt:              txn.UpdatedAt,
+		BillingCycle:           txn.BillingCycle,
+		IsExpandedBill:         txn.IsExpandedBill,
+		LinkedTransactionCount: txn.LinkedTransactionCount,
+		InstallmentCurrent:     txn.InstallmentCurrent,
+		InstallmentTotal:       txn.InstallmentTotal,
 	}
 
 	if txn.CategoryID != nil {

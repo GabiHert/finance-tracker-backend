@@ -73,8 +73,9 @@ func NewTransaction(
 
 // TransactionWithCategory represents a transaction with its associated category.
 type TransactionWithCategory struct {
-	Transaction *Transaction
-	Category    *Category
+	Transaction            *Transaction
+	Category               *Category
+	LinkedTransactionCount int // Number of CC transactions linked to this bill (only for expanded bills)
 }
 
 // TransactionListResult represents the result of listing transactions.
