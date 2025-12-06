@@ -46,6 +46,9 @@ var (
 
 	// ErrCannotInviteSelf is returned when a user tries to invite themselves.
 	ErrCannotInviteSelf = errors.New("cannot invite yourself")
+
+	// ErrUserNotRegistered is returned when the invited email is not a registered user.
+	ErrUserNotRegistered = errors.New("user is not registered on the platform")
 )
 
 // GroupErrorCode defines error codes for group errors.
@@ -73,9 +76,10 @@ const (
 	ErrCodeNotGroupMember GroupErrorCode = "GRP-040002"
 
 	// Invite errors (05XXXX)
-	ErrCodeInviteNotFound  GroupErrorCode = "GRP-010006"
-	ErrCodeInviteExpired   GroupErrorCode = "GRP-050002"
-	ErrCodeCannotInviteSelf GroupErrorCode = "GRP-050003"
+	ErrCodeInviteNotFound    GroupErrorCode = "GRP-010006"
+	ErrCodeInviteExpired     GroupErrorCode = "GRP-050002"
+	ErrCodeCannotInviteSelf  GroupErrorCode = "GRP-050003"
+	ErrCodeUserNotRegistered GroupErrorCode = "GRP-050004"
 
 	// Business logic errors (06XXXX)
 	ErrCodeCannotRemoveSoleAdmin GroupErrorCode = "GRP-010008"

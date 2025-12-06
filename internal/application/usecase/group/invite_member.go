@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -29,9 +30,10 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]
 
 // InviteMemberInput represents the input for inviting a member.
 type InviteMemberInput struct {
-	GroupID   uuid.UUID
-	Email     string
-	InviterID uuid.UUID
+	GroupID        uuid.UUID
+	Email          string
+	InviterID      uuid.UUID
+	ConfirmNonUser bool
 }
 
 // InviteMemberOutput represents the output of inviting a member.
@@ -41,16 +43,30 @@ type InviteMemberOutput struct {
 
 // InviteMemberUseCase handles inviting members to a group.
 type InviteMemberUseCase struct {
-	groupRepo adapter.GroupRepository
-	userRepo  adapter.UserRepository
+	groupRepo    adapter.GroupRepository
+	userRepo     adapter.UserRepository
+	emailService adapter.EmailService
+	appBaseURL   string
 }
 
 // NewInviteMemberUseCase creates a new InviteMemberUseCase instance.
-func NewInviteMemberUseCase(groupRepo adapter.GroupRepository, userRepo adapter.UserRepository) *InviteMemberUseCase {
+func NewInviteMemberUseCase(
+	groupRepo adapter.GroupRepository,
+	userRepo adapter.UserRepository,
+	emailService adapter.EmailService,
+	appBaseURL string,
+) *InviteMemberUseCase {
 	return &InviteMemberUseCase{
-		groupRepo: groupRepo,
-		userRepo:  userRepo,
+		groupRepo:    groupRepo,
+		userRepo:     userRepo,
+		emailService: emailService,
+		appBaseURL:   appBaseURL,
 	}
+}
+
+// GetUserRepository returns the user repository for external use.
+func (uc *InviteMemberUseCase) GetUserRepository() adapter.UserRepository {
+	return uc.userRepo
 }
 
 // Execute performs the member invitation.
@@ -116,6 +132,15 @@ func (uc *InviteMemberUseCase) Execute(ctx context.Context, input InviteMemberIn
 		}
 	}
 
+	// If user doesn't exist and not confirmed, return error requiring confirmation
+	if existingUser == nil && !input.ConfirmNonUser {
+		return nil, domainerror.NewGroupError(
+			domainerror.ErrCodeUserNotRegistered,
+			"user is not registered, confirmation required",
+			domainerror.ErrUserNotRegistered,
+		)
+	}
+
 	// Check if there's already a pending invite for this email
 	existingInvite, err := uc.groupRepo.FindPendingInviteByGroupAndEmail(ctx, input.GroupID, email)
 	if err != nil {
@@ -141,6 +166,47 @@ func (uc *InviteMemberUseCase) Execute(ctx context.Context, input InviteMemberIn
 
 	if err := uc.groupRepo.CreateInvite(ctx, invite); err != nil {
 		return nil, fmt.Errorf("failed to create invite: %w", err)
+	}
+
+	// Get group info for the email
+	group, err := uc.groupRepo.FindGroupByID(ctx, input.GroupID)
+	if err != nil {
+		slog.Warn("Failed to get group for invitation email", "error", err, "groupID", input.GroupID)
+	}
+
+	// Queue group invitation email
+	if uc.emailService != nil && group != nil {
+		inviteURL := fmt.Sprintf("%s/groups/join?token=%s", uc.appBaseURL, token)
+
+		err = uc.emailService.QueueGroupInvitationEmail(ctx, adapter.QueueGroupInvitationInput{
+			InviterName:  inviter.Name,
+			InviterEmail: inviter.Email,
+			GroupName:    group.Name,
+			InviteEmail:  email,
+			InviteURL:    inviteURL,
+			ExpiresIn:    "7 dias",
+		})
+		if err != nil {
+			// Log error but don't fail the invitation
+			slog.Error("Failed to queue group invitation email",
+				"error", err,
+				"inviteEmail", email,
+				"groupID", input.GroupID,
+			)
+		} else {
+			slog.Info("Group invitation email queued",
+				"inviteEmail", email,
+				"groupID", input.GroupID,
+				"inviterID", input.InviterID,
+			)
+		}
+	} else {
+		// Fallback: log for development when email service is not configured
+		slog.Info("Group invitation created (email service not configured)",
+			"inviteEmail", email,
+			"groupID", input.GroupID,
+			"token", token,
+		)
 	}
 
 	return &InviteMemberOutput{

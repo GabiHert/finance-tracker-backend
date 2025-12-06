@@ -15,7 +15,23 @@ type CreateGroupRequest struct {
 
 // InviteMemberRequest represents the request body for inviting a member.
 type InviteMemberRequest struct {
+	Email          string `json:"email" binding:"required,email"`
+	ConfirmNonUser bool   `json:"confirm_non_user"`
+}
+
+// InviteCheckRequest represents the request body for checking invite eligibility.
+type InviteCheckRequest struct {
 	Email string `json:"email" binding:"required,email"`
+}
+
+// InviteCheckResponse represents the response for checking invite eligibility.
+type InviteCheckResponse struct {
+	CanInvite            bool    `json:"can_invite"`
+	UserExists           bool    `json:"user_exists"`
+	UserName             *string `json:"user_name,omitempty"`
+	IsAlreadyMember      bool    `json:"is_already_member"`
+	RequiresConfirmation bool    `json:"requires_confirmation,omitempty"`
+	ErrorMessage         *string `json:"error_message,omitempty"`
 }
 
 // ChangeMemberRoleRequest represents the request body for changing a member's role.

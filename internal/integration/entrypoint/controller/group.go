@@ -254,9 +254,10 @@ func (c *GroupController) Invite(ctx *gin.Context) {
 
 	// Build input
 	input := group.InviteMemberInput{
-		GroupID:   groupID,
-		Email:     req.Email,
-		InviterID: userID,
+		GroupID:        groupID,
+		Email:          req.Email,
+		InviterID:      userID,
+		ConfirmNonUser: req.ConfirmNonUser,
 	}
 
 	// Execute use case
@@ -269,6 +270,93 @@ func (c *GroupController) Invite(ctx *gin.Context) {
 	// Build response
 	response := dto.ToGroupInviteResponse(output.Invite)
 	ctx.JSON(http.StatusCreated, response)
+}
+
+// CheckInvite handles POST /groups/:id/invite/check requests.
+func (c *GroupController) CheckInvite(ctx *gin.Context) {
+	// Get user ID from context
+	userID, ok := middleware.GetUserIDFromContext(ctx)
+	if !ok {
+		ctx.JSON(http.StatusUnauthorized, dto.ErrorResponse{
+			Error: "User not authenticated",
+			Code:  string(domainerror.ErrCodeMissingToken),
+		})
+		return
+	}
+
+	// Parse group ID from URL
+	groupIDStr := ctx.Param("id")
+	groupID, err := uuid.Parse(groupIDStr)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error: "Invalid group ID format",
+		})
+		return
+	}
+
+	// Parse request body
+	var req dto.InviteCheckRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error: "Invalid request body: " + err.Error(),
+			Code:  string(domainerror.ErrCodeInvalidGroupEmail),
+		})
+		return
+	}
+
+	// Check if requester is an admin of the group
+	requesterMember, err := c.groupRepo.FindMemberByGroupAndUser(ctx.Request.Context(), groupID, userID)
+	if err != nil {
+		ctx.JSON(http.StatusForbidden, dto.ErrorResponse{
+			Error: "You are not a member of this group",
+			Code:  string(domainerror.ErrCodeNotGroupMember),
+		})
+		return
+	}
+	if requesterMember.Role != entity.MemberRoleAdmin {
+		ctx.JSON(http.StatusForbidden, dto.ErrorResponse{
+			Error: "Only admins can check invite eligibility",
+			Code:  string(domainerror.ErrCodeNotGroupAdmin),
+		})
+		return
+	}
+
+	// Build response
+	response := dto.InviteCheckResponse{
+		CanInvite:            true,
+		UserExists:           false,
+		IsAlreadyMember:      false,
+		RequiresConfirmation: false,
+	}
+
+	// Check if user exists in the system
+	existingUser, err := c.inviteUseCase.GetUserRepository().FindByEmail(ctx.Request.Context(), req.Email)
+	if err == nil && existingUser != nil {
+		response.UserExists = true
+		response.UserName = &existingUser.Name
+
+		// Check if user is already a member
+		isMember, err := c.groupRepo.IsUserMemberOfGroup(ctx.Request.Context(), groupID, existingUser.ID)
+		if err == nil && isMember {
+			response.IsAlreadyMember = true
+			response.CanInvite = false
+			errorMsg := "User is already a member of this group"
+			response.ErrorMessage = &errorMsg
+		}
+	} else {
+		// User doesn't exist - requires confirmation
+		response.RequiresConfirmation = true
+	}
+
+	// Check if there's already a pending invite
+	existingInvite, err := c.groupRepo.FindPendingInviteByGroupAndEmail(ctx.Request.Context(), groupID, req.Email)
+	if err == nil && existingInvite != nil {
+		response.CanInvite = false
+		errorMsg := "An invite already exists for this email"
+		response.ErrorMessage = &errorMsg
+	}
+
+	ctx.JSON(http.StatusOK, response)
 }
 
 // AcceptInvite handles POST /groups/invites/:token/accept requests.
@@ -782,6 +870,8 @@ func (c *GroupController) getStatusCodeForGroupError(code domainerror.GroupError
 	case domainerror.ErrCodeNotGroupAdmin,
 		domainerror.ErrCodeNotGroupMember:
 		return http.StatusForbidden
+	case domainerror.ErrCodeUserNotRegistered:
+		return http.StatusUnprocessableEntity
 	case domainerror.ErrCodeGroupNameTooLong,
 		domainerror.ErrCodeGroupNameRequired,
 		domainerror.ErrCodeInvalidMemberRole,

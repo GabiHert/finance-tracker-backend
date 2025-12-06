@@ -168,6 +168,7 @@ func (r *Router) setupAPIRoutes() {
 			groups.DELETE("/:id", r.groupController.Delete)
 				groups.GET("/:id/dashboard", r.groupController.GetDashboard)
 				groups.POST("/:id/invite", r.groupController.Invite)
+				groups.POST("/:id/invite/check", r.groupController.CheckInvite)
 				groups.PUT("/:id/members/:member_id/role", r.groupController.ChangeRole)
 				groups.DELETE("/:id/members/:member_id", r.groupController.RemoveMember)
 				groups.DELETE("/:id/members/me", r.groupController.Leave)

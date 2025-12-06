@@ -109,7 +109,30 @@ Feature: Groups & Collaboration
   # ==================== Invite Member ====================
 
   @success @invite
-  Scenario: Invite member to group as admin
+  Scenario: Invite non-registered user with confirmation
+    When I send a "POST" request to "/api/v1/groups" with body:
+      """
+      {
+        "name": "Familia"
+      }
+      """
+    Then the response status should be 201
+    When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite" with body:
+      """
+      {
+        "email": "maria@example.com",
+        "confirm_non_user": true
+      }
+      """
+    Then the response status should be 201
+    And the response should be JSON
+    And the response field "email" should be "maria@example.com"
+    And the response field "status" should be "pending"
+    And the response field "token" should exist
+
+  @success @invite
+  Scenario: Invite registered user directly
+    Given the user "maria@example.com" exists
     When I send a "POST" request to "/api/v1/groups" with body:
       """
       {
@@ -126,8 +149,67 @@ Feature: Groups & Collaboration
     Then the response status should be 201
     And the response should be JSON
     And the response field "email" should be "maria@example.com"
-    And the response field "status" should be "pending"
-    And the response field "token" should exist
+
+  @failure @invite @confirmation-required
+  Scenario: Cannot invite non-registered user without confirmation
+    When I send a "POST" request to "/api/v1/groups" with body:
+      """
+      {
+        "name": "Familia"
+      }
+      """
+    Then the response status should be 201
+    When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite" with body:
+      """
+      {
+        "email": "nonexistent@example.com"
+      }
+      """
+    Then the response status should be 422
+    And the response should be JSON
+    And the response field "code" should be "GRP-050004"
+
+  @success @invite-check
+  Scenario: Check invite eligibility for non-registered user
+    When I send a "POST" request to "/api/v1/groups" with body:
+      """
+      {
+        "name": "Familia"
+      }
+      """
+    Then the response status should be 201
+    When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite/check" with body:
+      """
+      {
+        "email": "nonexistent@example.com"
+      }
+      """
+    Then the response status should be 200
+    And the response should be JSON
+    And the response field "can_invite" should be "true"
+    And the response field "user_exists" should be "false"
+    And the response field "requires_confirmation" should be "true"
+
+  @success @invite-check
+  Scenario: Check invite eligibility for registered user
+    Given the user "maria@example.com" exists
+    When I send a "POST" request to "/api/v1/groups" with body:
+      """
+      {
+        "name": "Familia"
+      }
+      """
+    Then the response status should be 201
+    When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite/check" with body:
+      """
+      {
+        "email": "maria@example.com"
+      }
+      """
+    Then the response status should be 200
+    And the response should be JSON
+    And the response field "can_invite" should be "true"
+    And the response field "user_exists" should be "true"
 
   @failure @invite @validation
   Scenario: Cannot invite with invalid email
@@ -159,14 +241,16 @@ Feature: Groups & Collaboration
     When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite" with body:
       """
       {
-        "email": "maria@example.com"
+        "email": "maria@example.com",
+        "confirm_non_user": true
       }
       """
     Then the response status should be 201
     When I send a "POST" request to "/api/v1/groups/{{group_id}}/invite" with body:
       """
       {
-        "email": "maria@example.com"
+        "email": "maria@example.com",
+        "confirm_non_user": true
       }
       """
     Then the response status should be 409
