@@ -20,6 +20,7 @@ type Router struct {
 	goalController         *controller.GoalController
 	groupController        *controller.GroupController
 	categoryRuleController *controller.CategoryRuleController
+	dashboardController    *controller.DashboardController
 	loginRateLimiter       *middleware.RateLimiter
 	authMiddleware         *middleware.AuthMiddleware
 }
@@ -35,6 +36,7 @@ func NewRouter(
 	goalController *controller.GoalController,
 	groupController *controller.GroupController,
 	categoryRuleController *controller.CategoryRuleController,
+	dashboardController *controller.DashboardController,
 	loginRateLimiter *middleware.RateLimiter,
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
@@ -48,6 +50,7 @@ func NewRouter(
 		goalController:         goalController,
 		groupController:        groupController,
 		categoryRuleController: categoryRuleController,
+		dashboardController:    dashboardController,
 		loginRateLimiter:       loginRateLimiter,
 		authMiddleware:         authMiddleware,
 	}
@@ -195,8 +198,14 @@ func (r *Router) setupAPIRoutes() {
 			}
 		}
 
-		// Dashboard routes (to be implemented)
-		_ = v1.Group("/dashboard")
+		// Dashboard routes (require authentication)
+		if r.dashboardController != nil && r.authMiddleware != nil {
+			dashboard := v1.Group("/dashboard")
+			dashboard.Use(r.authMiddleware.Authenticate())
+			{
+				dashboard.GET("/category-trends", r.dashboardController.GetCategoryTrends)
+			}
+		}
 	}
 }
 

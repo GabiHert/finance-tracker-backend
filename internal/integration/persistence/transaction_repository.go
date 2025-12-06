@@ -4,6 +4,7 @@ package persistence
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -739,4 +740,70 @@ func (r *transactionRepository) FindMostRecentCCBillingCycle(
 	}
 
 	return billingCycle, nil
+}
+
+// GetExpensesByDateRange returns all expense transactions for a user
+// within the specified date range, including category info.
+// Only returns transactions with a category assigned.
+func (r *transactionRepository) GetExpensesByDateRange(
+	ctx context.Context,
+	userID uuid.UUID,
+	startDate time.Time,
+	endDate time.Time,
+) ([]*entity.ExpenseWithCategory, error) {
+	var results []struct {
+		ID            uuid.UUID
+		UserID        uuid.UUID
+		Date          time.Time
+		Description   string
+		Amount        decimal.Decimal
+		CategoryID    uuid.UUID
+		CategoryName  string
+		CategoryColor string
+	}
+
+	// Query expenses with category info, filtering for expense type and valid categories
+	err := r.db.WithContext(ctx).
+		Table("transactions t").
+		Select(`
+			t.id,
+			t.user_id,
+			t.date,
+			t.description,
+			ABS(t.amount) as amount,
+			t.category_id,
+			c.name as category_name,
+			c.color as category_color
+		`).
+		Joins("INNER JOIN categories c ON t.category_id = c.id AND c.deleted_at IS NULL").
+		Where("t.user_id = ?", userID).
+		Where("t.type = ?", string(entity.TransactionTypeExpense)).
+		Where("t.date >= ?", startDate).
+		Where("t.date <= ?", endDate).
+		Where("t.deleted_at IS NULL").
+		Where("t.category_id IS NOT NULL").
+		Where("t.is_hidden = ?", false).
+		Order("t.date ASC").
+		Scan(&results).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query expenses by date range: %w", err)
+	}
+
+	// Convert to entity slice
+	expenses := make([]*entity.ExpenseWithCategory, len(results))
+	for i, r := range results {
+		expenses[i] = &entity.ExpenseWithCategory{
+			ID:            r.ID,
+			UserID:        r.UserID,
+			Date:          r.Date,
+			Description:   r.Description,
+			Amount:        r.Amount,
+			CategoryID:    r.CategoryID,
+			CategoryName:  r.CategoryName,
+			CategoryColor: r.CategoryColor,
+		}
+	}
+
+	return expenses, nil
 }

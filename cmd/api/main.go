@@ -18,6 +18,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
 	creditcard "github.com/finance-tracker/backend/internal/application/usecase/credit_card"
+	"github.com/finance-tracker/backend/internal/application/usecase/dashboard"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
@@ -98,6 +99,7 @@ func main() {
 	var goalController *controller.GoalController
 	var groupController *controller.GroupController
 	var categoryRuleController *controller.CategoryRuleController
+	var dashboardController *controller.DashboardController
 	var loginRateLimiter *middleware.RateLimiter
 	var authMiddleware *middleware.AuthMiddleware
 
@@ -249,17 +251,23 @@ func main() {
 			testPatternUseCase,
 		)
 
+		// Create dashboard use cases
+		getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+
+		// Create dashboard controller
+		dashboardController = controller.NewDashboardController(getCategoryTrendsUseCase)
+
 		// Create middleware
 		loginRateLimiter = middleware.NewRateLimiter()
 		authMiddleware = middleware.NewAuthMiddleware(tokenService)
 
-		slog.Info("Auth, Category, Transaction, Goal, Group, and CategoryRule systems initialized successfully")
+		slog.Info("Auth, Category, Transaction, Goal, Group, CategoryRule, and Dashboard systems initialized successfully")
 	} else {
 		slog.Warn("Auth, Category, Transaction, Goal, and Group systems not initialized due to missing database connection")
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server

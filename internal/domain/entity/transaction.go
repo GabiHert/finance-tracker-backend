@@ -100,3 +100,16 @@ type TransactionsByDate struct {
 	Transactions []*TransactionWithCategory
 	DailyTotal   decimal.Decimal
 }
+
+// ExpenseWithCategory represents an expense transaction with category info.
+// Used for category trends aggregation.
+type ExpenseWithCategory struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Date          time.Time
+	Description   string
+	Amount        decimal.Decimal
+	CategoryID    uuid.UUID
+	CategoryName  string
+	CategoryColor string
+}

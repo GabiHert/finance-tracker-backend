@@ -11,6 +11,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
 	creditcard "github.com/finance-tracker/backend/internal/application/usecase/credit_card"
+	"github.com/finance-tracker/backend/internal/application/usecase/dashboard"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
@@ -178,6 +179,12 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		testPatternUseCase,
 	)
 
+	// Create dashboard use cases
+	getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+
+	// Create dashboard controller
+	dashboardController := controller.NewDashboardController(getCategoryTrendsUseCase)
+
 	// Create middleware
 	// Use higher rate limits for E2E/test environments to prevent flaky tests
 	var loginRateLimiter *middleware.RateLimiter
@@ -189,7 +196,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

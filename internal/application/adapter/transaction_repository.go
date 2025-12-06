@@ -149,6 +149,16 @@ type TransactionRepository interface {
 	// FindMostRecentCCBillingCycle finds the most recent billing cycle with CC transactions.
 	// Returns empty string if no CC transactions exist.
 	FindMostRecentCCBillingCycle(ctx context.Context, userID uuid.UUID) (string, error)
+
+	// GetExpensesByDateRange returns all expense transactions for a user
+	// within the specified date range, including category info.
+	// Only returns transactions with a category assigned (category_id IS NOT NULL).
+	GetExpensesByDateRange(
+		ctx context.Context,
+		userID uuid.UUID,
+		startDate time.Time,
+		endDate time.Time,
+	) ([]*entity.ExpenseWithCategory, error)
 }
 
 // CreditCardStatus represents the status of credit card transactions for a billing cycle.

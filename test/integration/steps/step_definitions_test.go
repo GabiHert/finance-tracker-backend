@@ -28,6 +28,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
+	"github.com/finance-tracker/backend/internal/application/usecase/dashboard"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
@@ -157,6 +158,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Goal setup steps
 	ctx.Given(`^a goal exists for category "([^"]*)" with limit "([^"]*)"$`, test.aGoalExistsForCategoryWithLimit)
+
+	// Category trends setup steps
+	ctx.Given(`^expense transactions exist for category trends testing$`, test.expenseTransactionsExistForCategoryTrendsTesting)
 
 	// Group setup steps
 	ctx.Given(`^I am logged in as "([^"]*)"$`, test.iAmLoggedInAs)
@@ -345,11 +349,17 @@ func (t *testContext) startServer() {
 
 			userController := controller.NewUserController(deleteAccountUseCase)
 
+			// Create dashboard use cases
+			getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+
+			// Create dashboard controller
+			dashboardController := controller.NewDashboardController(getCategoryTrendsUseCase)
+
 			// Create middleware
 			loginRateLimiter := middleware.NewRateLimiter()
 			authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
-			r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, goalController, groupController, categoryRuleController, loginRateLimiter, authMiddleware)
+			r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, nil, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
 			engine := r.Setup("test")
 
 			addr := fmt.Sprintf(":%d", testServerPort)
@@ -1005,4 +1015,73 @@ func (t *testContext) aGoalExistsForCategoryWithLimit(categoryName, limitAmount 
 
 	result := t.db.DbConn.Create(goalModel)
 	return result.Error
+}
+
+// expenseTransactionsExistForCategoryTrendsTesting creates sample expense transactions for category trends testing.
+func (t *testContext) expenseTransactionsExistForCategoryTrendsTesting() error {
+	// Get existing categories for the user (created in previous steps)
+	var categories []model.CategoryModel
+	if err := t.db.DbConn.Where("owner_id = ? AND type = ?", t.currentUserID, "expense").Find(&categories).Error; err != nil {
+		return fmt.Errorf("failed to find categories: %w", err)
+	}
+
+	// If no categories exist, create one
+	if len(categories) == 0 {
+		categoryID := uuid.New()
+		t.currentCategoryID = categoryID
+		categoryModel := &model.CategoryModel{
+			ID:        categoryID,
+			Name:      "Test Category",
+			Color:     "#6366F1",
+			Icon:      "tag",
+			OwnerType: "user",
+			OwnerID:   t.currentUserID,
+			Type:      "expense",
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		if err := t.db.DbConn.Create(categoryModel).Error; err != nil {
+			return fmt.Errorf("failed to create category: %w", err)
+		}
+		categories = append(categories, *categoryModel)
+	}
+
+	now := time.Now().UTC()
+
+	// Create expense transactions across different dates
+	testDates := []time.Time{
+		time.Date(2024, 11, 1, 12, 0, 0, 0, time.UTC),
+		time.Date(2024, 11, 2, 12, 0, 0, 0, time.UTC),
+		time.Date(2024, 11, 3, 12, 0, 0, 0, time.UTC),
+		time.Date(2024, 11, 8, 12, 0, 0, 0, time.UTC),
+		time.Date(2024, 11, 15, 12, 0, 0, 0, time.UTC),
+		time.Date(2024, 11, 22, 12, 0, 0, 0, time.UTC),
+	}
+
+	for i, date := range testDates {
+		// Use the first category available, or alternate if multiple exist
+		categoryIdx := i % len(categories)
+		categoryID := categories[categoryIdx].ID
+
+		transactionModel := &model.TransactionModel{
+			ID:          uuid.New(),
+			UserID:      t.currentUserID,
+			Date:        date,
+			Description: fmt.Sprintf("Test expense %d", i+1),
+			Amount:      -100.00 * float64(i+1), // -100, -200, -300, etc.
+			Type:        "expense",
+			CategoryID:  &categoryID,
+			Notes:       "",
+			IsRecurring: false,
+			IsHidden:    false,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		if err := t.db.DbConn.Create(transactionModel).Error; err != nil {
+			return fmt.Errorf("failed to create transaction: %w", err)
+		}
+	}
+
+	return nil
 }
