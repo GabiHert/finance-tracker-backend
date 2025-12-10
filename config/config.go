@@ -15,6 +15,7 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	MinIO    MinIOConfig
+	Email    EmailConfig
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -57,6 +58,17 @@ type MinIOConfig struct {
 	UseSSL    bool
 }
 
+// EmailConfig holds email service configuration.
+type EmailConfig struct {
+	ResendAPIKey  string
+	FromName      string
+	FromEmail     string
+	AppBaseURL    string
+	WorkerEnabled bool
+	PollInterval  time.Duration
+	BatchSize     int
+}
+
 // Load loads configuration from environment variables.
 func Load() *Config {
 	return &Config{
@@ -89,6 +101,15 @@ func Load() *Config {
 			SecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin123"),
 			Bucket:    getEnv("MINIO_BUCKET", "finance-tracker-uploads"),
 			UseSSL:    getEnvAsBool("MINIO_USE_SSL", false),
+		},
+		Email: EmailConfig{
+			ResendAPIKey:  getEnv("RESEND_API_KEY", ""),
+			FromName:      getEnv("RESEND_FROM_NAME", "Finance Tracker"),
+			FromEmail:     getEnv("RESEND_FROM_EMAIL", "onboarding@resend.dev"),
+			AppBaseURL:    getEnv("APP_BASE_URL", "http://localhost:5173"),
+			WorkerEnabled: getEnvAsBool("EMAIL_WORKER_ENABLED", true),
+			PollInterval:  getEnvAsDuration("EMAIL_WORKER_POLL_INTERVAL", 5*time.Second),
+			BatchSize:     getEnvAsInt("EMAIL_WORKER_BATCH_SIZE", 10),
 		},
 	}
 }

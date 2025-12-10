@@ -14,6 +14,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/finance-tracker/backend/config"
+	"github.com/finance-tracker/backend/internal/application/adapter"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
@@ -25,6 +26,8 @@ import (
 	"github.com/finance-tracker/backend/internal/infra/db"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
+	"github.com/finance-tracker/backend/internal/integration/email"
+	"github.com/finance-tracker/backend/internal/integration/email/templates"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/middleware"
 	"github.com/finance-tracker/backend/internal/integration/persistence"
@@ -50,6 +53,10 @@ func main() {
 		"port", cfg.Server.Port,
 	)
 
+	// Create a cancellable context for the email worker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Initialize database connection
 	var database *db.Database
 	var dbHealthChecker func() bool
@@ -73,6 +80,7 @@ func main() {
 			&model.GroupMemberModel{},
 			&model.GroupInviteModel{},
 			&model.CategoryRuleModel{},
+			&model.EmailQueueModel{},
 		); err != nil {
 			slog.Error("Failed to run database migrations", "error", err)
 			os.Exit(1)
@@ -112,18 +120,64 @@ func main() {
 		goalRepo := persistence.NewGoalRepository(database.DB())
 		groupRepo := persistence.NewGroupRepository(database.DB())
 		categoryRuleRepo := persistence.NewCategoryRuleRepository(database.DB())
+		emailQueueRepo := persistence.NewEmailQueueRepository(database.DB())
 
 		// Create adapters/services
 		passwordService := adapters.NewPasswordService()
 		tokenService := adapters.NewTokenService(cfg.JWT.Secret, tokenRepo)
 		resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
 
+		// Create email infrastructure
+		var emailService adapter.EmailService
+		var emailSender adapter.EmailSender
+
+		if cfg.Email.ResendAPIKey != "" {
+			// Use Resend client for production
+			emailSender = email.NewResendClient(
+				cfg.Email.ResendAPIKey,
+				cfg.Email.FromName,
+				cfg.Email.FromEmail,
+			)
+			slog.Info("Resend email sender initialized")
+		} else {
+			// Use mock email sender for development/testing
+			emailSender = email.NewMockEmailSender()
+			slog.Warn("Using mock email sender (RESEND_API_KEY not set)")
+		}
+
+		// Create email service for queueing
+		emailService = email.NewService(emailQueueRepo, cfg.Email.AppBaseURL)
+
+		// Create and start email worker if enabled
+		if cfg.Email.WorkerEnabled {
+			templateRenderer, err := templates.NewRenderer()
+			if err != nil {
+				slog.Error("Failed to initialize email template renderer", "error", err)
+				os.Exit(1)
+			}
+
+			workerConfig := email.WorkerConfig{
+				PollInterval: cfg.Email.PollInterval,
+				BatchSize:    cfg.Email.BatchSize,
+			}
+			emailWorker := email.NewWorker(emailQueueRepo, emailSender, templateRenderer, workerConfig)
+
+			// Start email worker in background
+			go emailWorker.Start(ctx)
+			slog.Info("Email worker started",
+				"poll_interval", cfg.Email.PollInterval,
+				"batch_size", cfg.Email.BatchSize,
+			)
+		} else {
+			slog.Info("Email worker disabled")
+		}
+
 		// Create auth use cases
 		registerUseCase := auth.NewRegisterUserUseCase(userRepo, passwordService, tokenService)
 		loginUseCase := auth.NewLoginUserUseCase(userRepo, passwordService, tokenService)
 		refreshTokenUseCase := auth.NewRefreshTokenUseCase(tokenService)
 		logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
-		forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
+		forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService, emailService, cfg.Email.AppBaseURL)
 		resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
 		deleteAccountUseCase := auth.NewDeleteAccountUseCase(userRepo, passwordService, tokenService)
 
@@ -159,7 +213,7 @@ func main() {
 		listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
 		getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
 		deleteGroupUseCase := group.NewDeleteGroupUseCase(groupRepo)
-		inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+		inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo, emailService, cfg.Email.AppBaseURL)
 		acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
 		changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
 		removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
@@ -261,9 +315,9 @@ func main() {
 		loginRateLimiter = middleware.NewRateLimiter()
 		authMiddleware = middleware.NewAuthMiddleware(tokenService)
 
-		slog.Info("Auth, Category, Transaction, Goal, Group, CategoryRule, and Dashboard systems initialized successfully")
+		slog.Info("Auth, Category, Transaction, Goal, Group, CategoryRule, Dashboard, and Email systems initialized successfully")
 	} else {
-		slog.Warn("Auth, Category, Transaction, Goal, and Group systems not initialized due to missing database connection")
+		slog.Warn("Auth, Category, Transaction, Goal, Group, and Email systems not initialized due to missing database connection")
 	}
 
 	// Setup router
@@ -295,10 +349,13 @@ func main() {
 
 	slog.Info("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Cancel context to stop email worker
+	cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
 		os.Exit(1)
 	}

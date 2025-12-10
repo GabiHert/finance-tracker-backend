@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"regexp"
 
@@ -24,16 +25,22 @@ type ForgotPasswordOutput struct {
 type ForgotPasswordUseCase struct {
 	userRepo          adapter.UserRepository
 	resetTokenService adapter.PasswordResetTokenService
+	emailService      adapter.EmailService
+	appBaseURL        string
 }
 
 // NewForgotPasswordUseCase creates a new ForgotPasswordUseCase instance.
 func NewForgotPasswordUseCase(
 	userRepo adapter.UserRepository,
 	resetTokenService adapter.PasswordResetTokenService,
+	emailService adapter.EmailService,
+	appBaseURL string,
 ) *ForgotPasswordUseCase {
 	return &ForgotPasswordUseCase{
 		userRepo:          userRepo,
 		resetTokenService: resetTokenService,
+		emailService:      emailService,
+		appBaseURL:        appBaseURL,
 	}
 }
 
@@ -60,7 +67,7 @@ func (uc *ForgotPasswordUseCase) Execute(ctx context.Context, input ForgotPasswo
 	}
 
 	// Generate reset token
-	_, err = uc.resetTokenService.GenerateResetToken(ctx, user.ID, user.Email)
+	resetToken, err := uc.resetTokenService.GenerateResetToken(ctx, user.ID, user.Email)
 	if err != nil {
 		// Log error but still return success to prevent enumeration
 		slog.Error("Failed to generate reset token", "error", err, "userID", user.ID)
@@ -69,9 +76,32 @@ func (uc *ForgotPasswordUseCase) Execute(ctx context.Context, input ForgotPasswo
 		}, nil
 	}
 
-	// In a real implementation, we would send an email here
-	// For now, we just log it
-	slog.Info("Password reset token generated", "userID", user.ID, "email", user.Email)
+	// Build reset URL
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", uc.appBaseURL, resetToken.Token)
+
+	// Queue password reset email
+	if uc.emailService != nil {
+		err = uc.emailService.QueuePasswordResetEmail(ctx, adapter.QueuePasswordResetInput{
+			UserID:    user.ID.String(),
+			UserEmail: user.Email,
+			UserName:  user.Name,
+			ResetURL:  resetURL,
+			ExpiresIn: "1 hora",
+		})
+		if err != nil {
+			// Log error but still return success to prevent enumeration
+			slog.Error("Failed to queue password reset email", "error", err, "userID", user.ID)
+		} else {
+			slog.Info("Password reset email queued", "userID", user.ID, "email", user.Email)
+		}
+	} else {
+		// Fallback: log for development when email service is not configured
+		slog.Info("Password reset token generated (email service not configured)",
+			"userID", user.ID,
+			"email", user.Email,
+			"resetURL", resetURL,
+		)
+	}
 
 	return &ForgotPasswordOutput{
 		Message: "If an account with that email exists, we have sent a password reset link",

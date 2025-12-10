@@ -22,9 +22,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"github.com/finance-tracker/backend/internal/application/adapter"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
@@ -32,8 +34,11 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
+	domainerror "github.com/finance-tracker/backend/internal/domain/error"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
+	"github.com/finance-tracker/backend/internal/integration/email"
+	"github.com/finance-tracker/backend/internal/integration/email/templates"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/middleware"
 	"github.com/finance-tracker/backend/internal/integration/persistence"
@@ -71,25 +76,28 @@ func TestFeatures(t *testing.T) {
 }
 
 type testContext struct {
-	uri               string
-	headers           map[string]string
-	client            *http.Client
-	response          *response
-	db                *mock.Db
-	timeMock          *mock.Time
-	serverPort        int
-	accessToken       string
-	refreshToken      string
-	resetToken        string
-	expiredToken      string
-	currentUserID     uuid.UUID
-	currentCategoryID uuid.UUID
-	currentGoalID     uuid.UUID
-	currentGroupID    uuid.UUID
-	currentMemberID   uuid.UUID
+	uri                string
+	headers            map[string]string
+	client             *http.Client
+	response           *response
+	db                 *mock.Db
+	timeMock           *mock.Time
+	serverPort         int
+	accessToken        string
+	refreshToken       string
+	resetToken         string
+	expiredToken       string
+	currentUserID      uuid.UUID
+	currentCategoryID  uuid.UUID
+	currentGoalID      uuid.UUID
+	currentGroupID     uuid.UUID
+	currentMemberID    uuid.UUID
 	currentInviteToken string
-	transactionIDs    []uuid.UUID
-	lastTransactionID uuid.UUID
+	transactionIDs     []uuid.UUID
+	lastTransactionID  uuid.UUID
+	// Email testing
+	lastEmailJobID     uuid.UUID
+	emailSenderMock    *mockEmailSender
 }
 
 type response struct {
@@ -129,6 +137,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			"groups":                &model.GroupModel{},
 			"group_members":         &model.GroupMemberModel{},
 			"group_invites":         &model.GroupInviteModel{},
+			"email_queue":           &model.EmailQueueModel{},
 		}),
 	}
 
@@ -184,6 +193,24 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Database assertion steps
 	ctx.Then(`^the db should contain (\d+) objects in the "([^"]*)" table$`, test.theDbShouldContainObjectsInTheTable)
 	ctx.Then(`^the db should contain (\d+) objects in "([^"]*)" with the values$`, test.theDbShouldContainObjectsInWithTheValues)
+
+	// Email notification steps
+	ctx.Given(`^a pending email job exists for "([^"]*)"$`, test.aPendingEmailJobExistsFor)
+	ctx.Given(`^an email job with (\d+) failed attempts exists for "([^"]*)"$`, test.anEmailJobWithFailedAttemptsExistsFor)
+	ctx.Given(`^the email sender will fail with a temporary error$`, test.theEmailSenderWillFailWithATemporaryError)
+	ctx.Given(`^the email sender will fail with a permanent error$`, test.theEmailSenderWillFailWithAPermanentError)
+	ctx.When(`^the email worker processes the queue$`, test.theEmailWorkerProcessesTheQueue)
+	ctx.Then(`^an email job should be queued for "([^"]*)"$`, test.anEmailJobShouldBeQueuedFor)
+	ctx.Then(`^no email job should be queued for "([^"]*)"$`, test.noEmailJobShouldBeQueuedFor)
+	ctx.Then(`^the email job should have template type "([^"]*)"$`, test.theEmailJobShouldHaveTemplateType)
+	ctx.Then(`^the email job should have status "([^"]*)"$`, test.theEmailJobShouldHaveStatus)
+	ctx.Then(`^the email job for "([^"]*)" should have status "([^"]*)"$`, test.theEmailJobForShouldHaveStatus)
+	ctx.Then(`^the email job should have a resend_id$`, test.theEmailJobShouldHaveAResendId)
+	ctx.Then(`^the email job should have attempts equal to (\d+)$`, test.theEmailJobShouldHaveAttemptsEqualTo)
+	ctx.Then(`^the email job should have scheduled_at in the future$`, test.theEmailJobShouldHaveScheduledAtInTheFuture)
+	ctx.Then(`^the email job should have a last_error$`, test.theEmailJobShouldHaveALastError)
+	ctx.Then(`^the email job template data should contain "([^"]*)"$`, test.theEmailJobTemplateDataShouldContain)
+	ctx.Then(`^the database should contain an email_queue record with:$`, test.theDatabaseShouldContainAnEmailQueueRecordWith)
 }
 
 func findAvailablePort() int {
@@ -227,18 +254,23 @@ func (t *testContext) startServer() {
 			transactionRepo := persistence.NewTransactionRepository(testDB.DbConn)
 			goalRepo := persistence.NewGoalRepository(testDB.DbConn)
 			groupRepo := persistence.NewGroupRepository(testDB.DbConn)
+			categoryRuleRepo := persistence.NewCategoryRuleRepository(testDB.DbConn)
 
 			// Create adapters/services
 			passwordService := adapters.NewPasswordService()
 			tokenService := adapters.NewTokenService("test-jwt-secret-key-for-testing-purposes", tokenRepo)
 			resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
 
-			// Create auth use cases
+			// Create email queue repository and email service
+			emailQueueRepo := persistence.NewEmailQueueRepository(testDB.DbConn)
+			emailService := email.NewService(emailQueueRepo, "http://localhost:3000")
+
+			// Create auth use cases (with email service for integration tests)
 			registerUseCase := auth.NewRegisterUserUseCase(userRepo, passwordService, tokenService)
 			loginUseCase := auth.NewLoginUserUseCase(userRepo, passwordService, tokenService)
 			refreshTokenUseCase := auth.NewRefreshTokenUseCase(tokenService)
 			logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
-			forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
+			forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService, emailService, "http://localhost:3000")
 			resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
 
 			// Create category use cases
@@ -249,7 +281,7 @@ func (t *testContext) startServer() {
 
 			// Create transaction use cases
 			listTransactionsUseCase := transaction.NewListTransactionsUseCase(transactionRepo)
-			createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo)
+			createTransactionUseCase := transaction.NewCreateTransactionUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
 			updateTransactionUseCase := transaction.NewUpdateTransactionUseCase(transactionRepo, categoryRepo)
 			deleteTransactionUseCase := transaction.NewDeleteTransactionUseCase(transactionRepo)
 			bulkDeleteTransactionsUseCase := transaction.NewBulkDeleteTransactionsUseCase(transactionRepo)
@@ -262,21 +294,21 @@ func (t *testContext) startServer() {
 			updateGoalUseCase := goal.NewUpdateGoalUseCase(goalRepo)
 			deleteGoalUseCase := goal.NewDeleteGoalUseCase(goalRepo)
 
-			// Create group use cases
+			// Create group use cases (with email service for integration tests)
 			createGroupUseCase := group.NewCreateGroupUseCase(groupRepo, userRepo)
 			listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
 			getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
-			inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+			deleteGroupUseCase := group.NewDeleteGroupUseCase(groupRepo)
+			inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo, emailService, "http://localhost:3000")
 			acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
 			changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
 			removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
 			leaveGroupUseCase := group.NewLeaveGroupUseCase(groupRepo)
 			getGroupDashboardUseCase := group.NewGetGroupDashboardUseCase(groupRepo)
 
-			// Create category rule use cases
-			categoryRuleRepo := persistence.NewCategoryRuleRepository(testDB.DbConn)
+			// Create category rule use cases (categoryRuleRepo already created above)
 			listCategoryRulesUseCase := categoryrule.NewListCategoryRulesUseCase(categoryRuleRepo)
-			createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
+			createCategoryRuleUseCase := categoryrule.NewCreateCategoryRuleUseCase(categoryRuleRepo, categoryRepo, transactionRepo)
 			updateCategoryRuleUseCase := categoryrule.NewUpdateCategoryRuleUseCase(categoryRuleRepo, categoryRepo)
 			deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
 			reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
@@ -327,6 +359,7 @@ func (t *testContext) startServer() {
 				createGroupUseCase,
 				listGroupsUseCase,
 				getGroupUseCase,
+				deleteGroupUseCase,
 				inviteMemberUseCase,
 				acceptInviteUseCase,
 				changeMemberRoleUseCase,
@@ -1068,7 +1101,7 @@ func (t *testContext) expenseTransactionsExistForCategoryTrendsTesting() error {
 			UserID:      t.currentUserID,
 			Date:        date,
 			Description: fmt.Sprintf("Test expense %d", i+1),
-			Amount:      -100.00 * float64(i+1), // -100, -200, -300, etc.
+			Amount:      decimal.NewFromFloat(-100.00 * float64(i+1)), // -100, -200, -300, etc.
 			Type:        "expense",
 			CategoryID:  &categoryID,
 			Notes:       "",
@@ -1083,5 +1116,319 @@ func (t *testContext) expenseTransactionsExistForCategoryTrendsTesting() error {
 		}
 	}
 
+	return nil
+}
+
+// ============================================================================
+// Email Notification Step Definitions
+// ============================================================================
+
+// mockEmailSender is a mock implementation of adapter.EmailSender for testing.
+type mockEmailSender struct {
+	shouldFailTemp bool
+	shouldFailPerm bool
+	lastResendID   string
+}
+
+func newMockEmailSender() *mockEmailSender {
+	return &mockEmailSender{}
+}
+
+func (m *mockEmailSender) Send(ctx context.Context, input adapter.SendEmailInput) (*adapter.SendEmailResult, error) {
+	if m.shouldFailPerm {
+		return nil, domainerror.NewEmailError(
+			domainerror.ErrCodePermanentEmailFailure,
+			"permanent email failure",
+			errors.New("invalid recipient"),
+		)
+	}
+	if m.shouldFailTemp {
+		return nil, errors.New("temporary email failure")
+	}
+	m.lastResendID = uuid.New().String()
+	return &adapter.SendEmailResult{
+		ResendID: m.lastResendID,
+	}, nil
+}
+
+// aPendingEmailJobExistsFor creates a pending email job for testing.
+func (t *testContext) aPendingEmailJobExistsFor(email string) error {
+	jobID := uuid.New()
+	t.lastEmailJobID = jobID
+
+	now := time.Now().UTC()
+	templateData := `{"user_name":"Test User","reset_url":"http://localhost:3000/reset?token=test","expires_in":"1 hora"}`
+
+	emailJob := &model.EmailQueueModel{
+		ID:             jobID,
+		TemplateType:   "password_reset",
+		RecipientEmail: email,
+		RecipientName:  "Test User",
+		Subject:        "Reset your password",
+		TemplateData:   templateData,
+		Status:         "pending",
+		Attempts:       0,
+		MaxAttempts:    3,
+		CreatedAt:      now,
+		ScheduledAt:    now,
+	}
+
+	result := t.db.DbConn.Create(emailJob)
+	return result.Error
+}
+
+// anEmailJobWithFailedAttemptsExistsFor creates an email job with failed attempts.
+func (t *testContext) anEmailJobWithFailedAttemptsExistsFor(attempts int, email string) error {
+	jobID := uuid.New()
+	t.lastEmailJobID = jobID
+
+	now := time.Now().UTC()
+	templateData := `{"user_name":"Test User","reset_url":"http://localhost:3000/reset?token=test","expires_in":"1 hora"}`
+
+	emailJob := &model.EmailQueueModel{
+		ID:             jobID,
+		TemplateType:   "password_reset",
+		RecipientEmail: email,
+		RecipientName:  "Test User",
+		Subject:        "Reset your password",
+		TemplateData:   templateData,
+		Status:         "pending",
+		Attempts:       attempts,
+		MaxAttempts:    3,
+		LastError:      "previous attempt failed",
+		CreatedAt:      now,
+		ScheduledAt:    now,
+	}
+
+	result := t.db.DbConn.Create(emailJob)
+	return result.Error
+}
+
+// theEmailSenderWillFailWithATemporaryError sets up the mock to fail with temporary error.
+func (t *testContext) theEmailSenderWillFailWithATemporaryError() error {
+	if t.emailSenderMock == nil {
+		t.emailSenderMock = newMockEmailSender()
+	}
+	t.emailSenderMock.shouldFailTemp = true
+	t.emailSenderMock.shouldFailPerm = false
+	return nil
+}
+
+// theEmailSenderWillFailWithAPermanentError sets up the mock to fail with permanent error.
+func (t *testContext) theEmailSenderWillFailWithAPermanentError() error {
+	if t.emailSenderMock == nil {
+		t.emailSenderMock = newMockEmailSender()
+	}
+	t.emailSenderMock.shouldFailTemp = false
+	t.emailSenderMock.shouldFailPerm = true
+	return nil
+}
+
+// theEmailWorkerProcessesTheQueue processes the email queue using a worker.
+func (t *testContext) theEmailWorkerProcessesTheQueue() error {
+	// Ensure mock sender is initialized
+	if t.emailSenderMock == nil {
+		t.emailSenderMock = newMockEmailSender()
+	}
+
+	// Create email queue repository
+	emailQueueRepo := persistence.NewEmailQueueRepository(t.db.DbConn)
+
+	// Create a minimal template renderer for testing
+	renderer, err := templates.NewRenderer()
+	if err != nil {
+		return fmt.Errorf("failed to create renderer: %w", err)
+	}
+
+	// Create worker with test configuration
+	config := email.WorkerConfig{
+		PollInterval: 1 * time.Second,
+		BatchSize:    10,
+	}
+	worker := email.NewWorker(emailQueueRepo, t.emailSenderMock, renderer, config)
+
+	// Process the queue once
+	ctx := context.Background()
+	worker.ProcessNow(ctx)
+
+	return nil
+}
+
+// anEmailJobShouldBeQueuedFor checks that an email job exists for the given email.
+func (t *testContext) anEmailJobShouldBeQueuedFor(email string) error {
+	var id string
+	result := t.db.DbConn.Raw("SELECT id FROM email_queue WHERE recipient_email = ? ORDER BY created_at DESC LIMIT 1", email).Row()
+	if err := result.Scan(&id); err != nil {
+		return fmt.Errorf("no email job found for %s: %w", email, err)
+	}
+	t.lastEmailJobID = uuid.MustParse(id)
+	return nil
+}
+
+// noEmailJobShouldBeQueuedFor checks that no email job exists for the given email.
+func (t *testContext) noEmailJobShouldBeQueuedFor(email string) error {
+	var count int64
+	result := t.db.DbConn.Raw("SELECT COUNT(*) FROM email_queue WHERE recipient_email = ?", email).Row()
+	if err := result.Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("expected no email job for %s, but found %d", email, count)
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveTemplateType checks the template type of the last email job.
+func (t *testContext) theEmailJobShouldHaveTemplateType(templateType string) error {
+	var actualTemplateType string
+	result := t.db.DbConn.Raw("SELECT template_type FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&actualTemplateType); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if actualTemplateType != templateType {
+		return fmt.Errorf("expected template type %s, got %s", templateType, actualTemplateType)
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveStatus checks the status of the last email job.
+func (t *testContext) theEmailJobShouldHaveStatus(status string) error {
+	var actualStatus string
+	result := t.db.DbConn.Raw("SELECT status FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&actualStatus); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if actualStatus != status {
+		return fmt.Errorf("expected status %s, got %s", status, actualStatus)
+	}
+	return nil
+}
+
+// theEmailJobForShouldHaveStatus checks the status of the email job for a specific recipient.
+func (t *testContext) theEmailJobForShouldHaveStatus(email, status string) error {
+	var id string
+	var actualStatus string
+	result := t.db.DbConn.Raw("SELECT id, status FROM email_queue WHERE recipient_email = ? ORDER BY created_at DESC LIMIT 1", email).Row()
+	if err := result.Scan(&id, &actualStatus); err != nil {
+		return fmt.Errorf("email job not found for %s: %w", email, err)
+	}
+	t.lastEmailJobID = uuid.MustParse(id)
+	if actualStatus != status {
+		return fmt.Errorf("expected status %s, got %s", status, actualStatus)
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveAResendId checks that the email job has a resend_id.
+func (t *testContext) theEmailJobShouldHaveAResendId() error {
+	var resendID string
+	result := t.db.DbConn.Raw("SELECT resend_id FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&resendID); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if resendID == "" {
+		return fmt.Errorf("expected resend_id to be set, but it was empty")
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveAttemptsEqualTo checks the attempts count of the email job.
+func (t *testContext) theEmailJobShouldHaveAttemptsEqualTo(expected int) error {
+	var attempts int
+	result := t.db.DbConn.Raw("SELECT attempts FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&attempts); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if attempts != expected {
+		return fmt.Errorf("expected attempts %d, got %d", expected, attempts)
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveScheduledAtInTheFuture checks that scheduled_at is in the future.
+func (t *testContext) theEmailJobShouldHaveScheduledAtInTheFuture() error {
+	var scheduledAt time.Time
+	result := t.db.DbConn.Raw("SELECT scheduled_at FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&scheduledAt); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if !scheduledAt.After(time.Now().UTC()) {
+		return fmt.Errorf("expected scheduled_at to be in the future, got %v", scheduledAt)
+	}
+	return nil
+}
+
+// theEmailJobShouldHaveALastError checks that the email job has a last_error.
+func (t *testContext) theEmailJobShouldHaveALastError() error {
+	var lastError string
+	result := t.db.DbConn.Raw("SELECT last_error FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&lastError); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+	if lastError == "" {
+		return fmt.Errorf("expected last_error to be set, but it was empty")
+	}
+	return nil
+}
+
+// theEmailJobTemplateDataShouldContain checks that template data contains a key.
+func (t *testContext) theEmailJobTemplateDataShouldContain(key string) error {
+	var templateDataStr string
+	result := t.db.DbConn.Raw("SELECT template_data FROM email_queue WHERE id = ?", t.lastEmailJobID).Row()
+	if err := result.Scan(&templateDataStr); err != nil {
+		return fmt.Errorf("email job not found: %w", err)
+	}
+
+	var templateData map[string]interface{}
+	if err := json.Unmarshal([]byte(templateDataStr), &templateData); err != nil {
+		return fmt.Errorf("failed to parse template data: %w", err)
+	}
+
+	if _, ok := templateData[key]; !ok {
+		return fmt.Errorf("expected template data to contain key '%s', got %v", key, templateData)
+	}
+	return nil
+}
+
+// theDatabaseShouldContainAnEmailQueueRecordWith checks email_queue record with specific values.
+func (t *testContext) theDatabaseShouldContainAnEmailQueueRecordWith(table *godog.Table) error {
+	criteria := make(map[string]interface{})
+	for _, row := range table.Rows {
+		if len(row.Cells) >= 2 {
+			key := row.Cells[0].Value
+			value := row.Cells[1].Value
+
+			// Convert string values to appropriate types
+			switch key {
+			case "attempts", "max_attempts":
+				intVal, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("invalid integer value for %s: %w", key, err)
+				}
+				criteria[key] = intVal
+			default:
+				criteria[key] = value
+			}
+		}
+	}
+
+	// Build the WHERE clause dynamically
+	var conditions []string
+	var args []interface{}
+	for key, value := range criteria {
+		conditions = append(conditions, fmt.Sprintf("%s = ?", key))
+		args = append(args, value)
+	}
+
+	whereClause := strings.Join(conditions, " AND ")
+	query := fmt.Sprintf("SELECT id FROM email_queue WHERE %s LIMIT 1", whereClause)
+
+	var id string
+	result := t.db.DbConn.Raw(query, args...).Row()
+	if err := result.Scan(&id); err != nil {
+		return fmt.Errorf("no email_queue record found matching criteria %v: %w", criteria, err)
+	}
+
+	t.lastEmailJobID = uuid.MustParse(id)
 	return nil
 }

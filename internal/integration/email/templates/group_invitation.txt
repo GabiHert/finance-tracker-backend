@@ -1,0 +1,15 @@
+Finance Tracker - Convite para Grupo
+
+Voce foi convidado!
+
+{{.InviterName}} ({{.InviterEmail}}) convidou voce para participar do grupo "{{.GroupName}}".
+
+Para aceitar o convite, acesse:
+{{.InviteURL}}
+
+Este convite expira em {{.ExpiresIn}}.
+
+Se voce nao conhece {{.InviterName}}, pode ignorar este email com seguranca.
+
+--
+Finance Tracker

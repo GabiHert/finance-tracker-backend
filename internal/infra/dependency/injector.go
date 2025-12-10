@@ -17,6 +17,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
+	"github.com/finance-tracker/backend/internal/integration/email"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/controller"
 	"github.com/finance-tracker/backend/internal/integration/entrypoint/middleware"
 	"github.com/finance-tracker/backend/internal/integration/persistence"
@@ -39,18 +40,22 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	goalRepo := persistence.NewGoalRepository(db)
 	groupRepo := persistence.NewGroupRepository(db)
 	categoryRuleRepo := persistence.NewCategoryRuleRepository(db)
+	emailQueueRepo := persistence.NewEmailQueueRepository(db)
 
 	// Create adapters/services
 	passwordService := adapters.NewPasswordService()
 	tokenService := adapters.NewTokenService(cfg.JWT.Secret, tokenRepo)
 	resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
 
+	// Create email service for queueing
+	emailService := email.NewService(emailQueueRepo, cfg.Email.AppBaseURL)
+
 	// Create auth use cases
 	registerUseCase := auth.NewRegisterUserUseCase(userRepo, passwordService, tokenService)
 	loginUseCase := auth.NewLoginUserUseCase(userRepo, passwordService, tokenService)
 	refreshTokenUseCase := auth.NewRefreshTokenUseCase(tokenService)
 	logoutUseCase := auth.NewLogoutUserUseCase(tokenService)
-	forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService)
+	forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepo, resetTokenService, emailService, cfg.Email.AppBaseURL)
 	resetPasswordUseCase := auth.NewResetPasswordUseCase(userRepo, passwordService, resetTokenService)
 	deleteAccountUseCase := auth.NewDeleteAccountUseCase(userRepo, passwordService, tokenService)
 
@@ -86,7 +91,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	listGroupsUseCase := group.NewListGroupsUseCase(groupRepo)
 	getGroupUseCase := group.NewGetGroupUseCase(groupRepo)
 	deleteGroupUseCase := group.NewDeleteGroupUseCase(groupRepo)
-	inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo)
+	inviteMemberUseCase := group.NewInviteMemberUseCase(groupRepo, userRepo, emailService, cfg.Email.AppBaseURL)
 	acceptInviteUseCase := group.NewAcceptInviteUseCase(groupRepo, userRepo)
 	changeMemberRoleUseCase := group.NewChangeMemberRoleUseCase(groupRepo)
 	removeMemberUseCase := group.NewRemoveMemberUseCase(groupRepo)
