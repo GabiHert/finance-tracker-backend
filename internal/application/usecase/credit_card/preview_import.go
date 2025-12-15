@@ -130,12 +130,14 @@ func (uc *PreviewImportUseCase) Execute(ctx context.Context, input PreviewImport
 	for _, txn := range input.Transactions {
 		if paymentReceivedRegex.MatchString(txn.Description) {
 			// This is the "Pagamento recebido" entry - typically negative in CC statement
+			// Use Abs() here since we want the positive reference amount for matching
 			paymentReceivedAmount = paymentReceivedAmount.Add(txn.Amount.Abs())
 			ccPaymentDate = txn.Date
 			ccPaymentAmount = txn.Amount
 		} else {
-			// Regular CC transaction
-			totalAmount = totalAmount.Add(txn.Amount.Abs())
+			// Regular CC transaction - preserve sign for algebraic sum
+			// Refunds (negative amounts like "Estorno de compra") should subtract from total
+			totalAmount = totalAmount.Add(txn.Amount)
 			transactionsToImport = append(transactionsToImport, txn)
 		}
 	}

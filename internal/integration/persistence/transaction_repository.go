@@ -595,12 +595,13 @@ func (r *transactionRepository) GetCreditCardStatus(
 				}
 
 				if len(standaloneTxns) > 0 {
-					// Calculate total spending from standalone transactions
+					// Calculate total spending from standalone transactions - preserve sign for algebraic sum
+					// Refunds (negative amounts like "Estorno de compra") should subtract from total
 					totalSpending := decimal.Zero
 					var transactions []*entity.Transaction
 					for _, txn := range standaloneTxns {
 						transactions = append(transactions, txn.ToEntity())
-						totalSpending = totalSpending.Add(txn.Amount.Abs())
+						totalSpending = totalSpending.Add(txn.Amount)
 					}
 
 					return &adapter.CreditCardStatus{
