@@ -176,14 +176,16 @@ func (c *TransactionController) Create(ctx *gin.Context) {
 
 	// Build input
 	input := transaction.CreateTransactionInput{
-		UserID:      userID,
-		Date:        date,
-		Description: req.Description,
-		Amount:      decimal.NewFromFloat(req.Amount),
-		Type:        entity.TransactionType(req.Type),
-		CategoryID:  categoryID,
-		Notes:       req.Notes,
-		IsRecurring: req.IsRecurring,
+		UserID:              userID,
+		Date:                date,
+		Description:         req.Description,
+		Amount:              decimal.NewFromFloat(req.Amount),
+		Type:                entity.TransactionType(req.Type),
+		CategoryID:          categoryID,
+		Notes:               req.Notes,
+		IsRecurring:         req.IsRecurring,
+		BillingCycle:        req.BillingCycle,
+		IsCreditCardPayment: req.IsCreditCardPayment,
 	}
 
 	// Execute use case

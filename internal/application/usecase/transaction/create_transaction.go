@@ -25,14 +25,16 @@ const (
 
 // CreateTransactionInput represents the input for transaction creation.
 type CreateTransactionInput struct {
-	UserID      uuid.UUID
-	Date        time.Time
-	Description string
-	Amount      decimal.Decimal
-	Type        entity.TransactionType
-	CategoryID  *uuid.UUID
-	Notes       string
-	IsRecurring bool
+	UserID              uuid.UUID
+	Date                time.Time
+	Description         string
+	Amount              decimal.Decimal
+	Type                entity.TransactionType
+	CategoryID          *uuid.UUID
+	Notes               string
+	IsRecurring         bool
+	BillingCycle        string // Format: "YYYY-MM" (e.g., "2024-11") - for credit card transactions
+	IsCreditCardPayment bool   // True if this is a credit card payment transaction
 }
 
 // CreateTransactionOutput represents the output of transaction creation.
@@ -132,6 +134,14 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 		input.IsRecurring,
 	)
 
+	// Set credit card fields if provided
+	if input.BillingCycle != "" {
+		transaction.BillingCycle = input.BillingCycle
+	}
+	if input.IsCreditCardPayment {
+		transaction.IsCreditCardPayment = true
+	}
+
 	// Save transaction to database
 	if err := uc.transactionRepo.Create(ctx, transaction); err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
@@ -140,21 +150,22 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 	// Build output
 	output := &CreateTransactionOutput{
 		Transaction: &TransactionOutput{
-			ID:                 transaction.ID,
-			UserID:             transaction.UserID,
-			Date:               transaction.Date,
-			Description:        transaction.Description,
-			Amount:             transaction.Amount,
-			Type:               transaction.Type,
-			CategoryID:         transaction.CategoryID,
-			Notes:              transaction.Notes,
-			IsRecurring:        transaction.IsRecurring,
-			CreatedAt:          transaction.CreatedAt,
-			UpdatedAt:          transaction.UpdatedAt,
-			BillingCycle:       transaction.BillingCycle,
-			IsExpandedBill:     transaction.ExpandedAt != nil,
-			InstallmentCurrent: transaction.InstallmentCurrent,
-			InstallmentTotal:   transaction.InstallmentTotal,
+			ID:                  transaction.ID,
+			UserID:              transaction.UserID,
+			Date:                transaction.Date,
+			Description:         transaction.Description,
+			Amount:              transaction.Amount,
+			Type:                transaction.Type,
+			CategoryID:          transaction.CategoryID,
+			Notes:               transaction.Notes,
+			IsRecurring:         transaction.IsRecurring,
+			CreatedAt:           transaction.CreatedAt,
+			UpdatedAt:           transaction.UpdatedAt,
+			BillingCycle:        transaction.BillingCycle,
+			IsExpandedBill:      transaction.ExpandedAt != nil,
+			InstallmentCurrent:  transaction.InstallmentCurrent,
+			InstallmentTotal:    transaction.InstallmentTotal,
+			CreditCardPaymentID: transaction.CreditCardPaymentID,
 		},
 	}
 

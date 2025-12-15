@@ -25,7 +25,8 @@ const (
 	// AmountToleranceAbsolute is the absolute tolerance for amount matching (R$ 10.00).
 	AmountToleranceAbsolute = 10.0
 	// DateProximityDays is the maximum days difference for date matching.
-	DateProximityDays = 5
+	// Set to 10 to accommodate CC statement dates vs bank payment dates (typically 5-7 days apart).
+	DateProximityDays = 10
 	// PaymentReceivedPattern matches "Pagamento recebido" entries in CC statements.
 	PaymentReceivedPattern = `(?i)pagamento\s+recebido`
 )

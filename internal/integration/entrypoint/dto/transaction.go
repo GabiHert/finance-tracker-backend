@@ -9,13 +9,15 @@ import (
 
 // CreateTransactionRequest represents the request body for transaction creation.
 type CreateTransactionRequest struct {
-	Date        string  `json:"date" binding:"required"`
-	Description string  `json:"description" binding:"required,min=1,max=255"`
-	Amount      float64 `json:"amount" binding:"required"`
-	Type        string  `json:"type" binding:"required,oneof=expense income"`
-	CategoryID  *string `json:"category_id,omitempty"`
-	Notes       string  `json:"notes,omitempty" binding:"omitempty,max=1000"`
-	IsRecurring bool    `json:"is_recurring,omitempty"`
+	Date                string  `json:"date" binding:"required"`
+	Description         string  `json:"description" binding:"required,min=1,max=255"`
+	Amount              float64 `json:"amount" binding:"required"`
+	Type                string  `json:"type" binding:"required,oneof=expense income"`
+	CategoryID          *string `json:"category_id,omitempty"`
+	Notes               string  `json:"notes,omitempty" binding:"omitempty,max=1000"`
+	IsRecurring         bool    `json:"is_recurring,omitempty"`
+	BillingCycle        string  `json:"billing_cycle,omitempty"`         // Format: "YYYY-MM" (e.g., "2024-11")
+	IsCreditCardPayment bool    `json:"is_credit_card_payment,omitempty"`
 }
 
 // UpdateTransactionRequest represents the request body for transaction update.
@@ -65,11 +67,12 @@ type TransactionResponse struct {
 	CreatedAt   time.Time                    `json:"created_at"`
 	UpdatedAt   time.Time                    `json:"updated_at"`
 	// Credit card import fields
-	BillingCycle           string `json:"billing_cycle,omitempty"`
-	IsExpandedBill         bool   `json:"is_expanded_bill,omitempty"`
-	LinkedTransactionCount int    `json:"linked_transaction_count,omitempty"`
-	InstallmentCurrent     *int   `json:"installment_current,omitempty"`
-	InstallmentTotal       *int   `json:"installment_total,omitempty"`
+	BillingCycle           string  `json:"billing_cycle,omitempty"`
+	IsExpandedBill         bool    `json:"is_expanded_bill,omitempty"`
+	LinkedTransactionCount int     `json:"linked_transaction_count,omitempty"`
+	InstallmentCurrent     *int    `json:"installment_current,omitempty"`
+	InstallmentTotal       *int    `json:"installment_total,omitempty"`
+	CreditCardPaymentID    *string `json:"credit_card_payment_id,omitempty"` // ID of linked bill, set when CC transactions are linked
 }
 
 // TransactionPaginationResponse represents pagination information in API responses.
@@ -127,6 +130,11 @@ func ToTransactionResponse(txn *transaction.TransactionOutput) TransactionRespon
 	if txn.CategoryID != nil {
 		categoryIDStr := txn.CategoryID.String()
 		response.CategoryID = &categoryIDStr
+	}
+
+	if txn.CreditCardPaymentID != nil {
+		ccPaymentIDStr := txn.CreditCardPaymentID.String()
+		response.CreditCardPaymentID = &ccPaymentIDStr
 	}
 
 	if txn.Category != nil {

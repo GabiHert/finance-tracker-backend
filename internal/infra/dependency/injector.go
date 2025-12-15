@@ -14,6 +14,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/dashboard"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
+	"github.com/finance-tracker/backend/internal/application/usecase/reconciliation"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
 	"github.com/finance-tracker/backend/internal/integration/adapters"
@@ -78,6 +79,15 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	importTransactionsUseCase := creditcard.NewImportTransactionsUseCase(transactionRepo, categoryRepo, categoryRuleRepo)
 	collapseExpansionUseCase := creditcard.NewCollapseExpansionUseCase(transactionRepo)
 	getStatusUseCase := creditcard.NewGetStatusUseCase(transactionRepo)
+
+	// Create reconciliation repository and use cases
+	reconciliationRepo := persistence.NewReconciliationRepository(db)
+	getPendingUseCase := reconciliation.NewGetPendingUseCase(reconciliationRepo)
+	getLinkedUseCase := reconciliation.NewGetLinkedUseCase(reconciliationRepo)
+	getSummaryUseCase := reconciliation.NewGetSummaryUseCase(reconciliationRepo)
+	manualLinkUseCase := reconciliation.NewManualLinkUseCase(reconciliationRepo)
+	unlinkUseCase := reconciliation.NewUnlinkUseCase(reconciliationRepo)
+	triggerReconciliationUseCase := reconciliation.NewTriggerReconciliationUseCase(reconciliationRepo)
 
 	// Create goal use cases
 	listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
@@ -151,6 +161,15 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		getStatusUseCase,
 	)
 
+	reconciliationController := controller.NewReconciliationController(
+		getPendingUseCase,
+		getLinkedUseCase,
+		getSummaryUseCase,
+		manualLinkUseCase,
+		unlinkUseCase,
+		triggerReconciliationUseCase,
+	)
+
 	goalController := controller.NewGoalController(
 		listGoalsUseCase,
 		createGoalUseCase,
@@ -201,7 +220,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

@@ -10,19 +10,20 @@ import (
 
 // Router holds the Gin engine and controller dependencies.
 type Router struct {
-	engine                 *gin.Engine
-	healthController       *controller.HealthController
-	authController         *controller.AuthController
-	userController         *controller.UserController
-	categoryController     *controller.CategoryController
-	transactionController  *controller.TransactionController
-	creditCardController   *controller.CreditCardController
-	goalController         *controller.GoalController
-	groupController        *controller.GroupController
-	categoryRuleController *controller.CategoryRuleController
-	dashboardController    *controller.DashboardController
-	loginRateLimiter       *middleware.RateLimiter
-	authMiddleware         *middleware.AuthMiddleware
+	engine                    *gin.Engine
+	healthController          *controller.HealthController
+	authController            *controller.AuthController
+	userController            *controller.UserController
+	categoryController        *controller.CategoryController
+	transactionController     *controller.TransactionController
+	creditCardController      *controller.CreditCardController
+	reconciliationController  *controller.ReconciliationController
+	goalController            *controller.GoalController
+	groupController           *controller.GroupController
+	categoryRuleController    *controller.CategoryRuleController
+	dashboardController       *controller.DashboardController
+	loginRateLimiter          *middleware.RateLimiter
+	authMiddleware            *middleware.AuthMiddleware
 }
 
 // NewRouter creates a new router instance with all dependencies.
@@ -33,6 +34,7 @@ func NewRouter(
 	categoryController *controller.CategoryController,
 	transactionController *controller.TransactionController,
 	creditCardController *controller.CreditCardController,
+	reconciliationController *controller.ReconciliationController,
 	goalController *controller.GoalController,
 	groupController *controller.GroupController,
 	categoryRuleController *controller.CategoryRuleController,
@@ -41,18 +43,19 @@ func NewRouter(
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
 	return &Router{
-		healthController:       healthController,
-		authController:         authController,
-		userController:         userController,
-		categoryController:     categoryController,
-		transactionController:  transactionController,
-		creditCardController:   creditCardController,
-		goalController:         goalController,
-		groupController:        groupController,
-		categoryRuleController: categoryRuleController,
-		dashboardController:    dashboardController,
-		loginRateLimiter:       loginRateLimiter,
-		authMiddleware:         authMiddleware,
+		healthController:         healthController,
+		authController:           authController,
+		userController:           userController,
+		categoryController:       categoryController,
+		transactionController:    transactionController,
+		creditCardController:     creditCardController,
+		reconciliationController: reconciliationController,
+		goalController:           goalController,
+		groupController:          groupController,
+		categoryRuleController:   categoryRuleController,
+		dashboardController:      dashboardController,
+		loginRateLimiter:         loginRateLimiter,
+		authMiddleware:           authMiddleware,
 	}
 }
 
@@ -130,6 +133,19 @@ func (r *Router) setupAPIRoutes() {
 						creditCard.POST("/import", r.creditCardController.Import)
 						creditCard.POST("/collapse", r.creditCardController.Collapse)
 						creditCard.GET("/status", r.creditCardController.GetStatus)
+
+						// Reconciliation routes (nested under credit-card)
+						if r.reconciliationController != nil {
+							reconciliation := creditCard.Group("/reconciliation")
+							{
+								reconciliation.GET("/pending", r.reconciliationController.GetPending)
+								reconciliation.GET("/linked", r.reconciliationController.GetLinked)
+								reconciliation.GET("/summary", r.reconciliationController.GetSummary)
+								reconciliation.POST("/link", r.reconciliationController.ManualLink)
+								reconciliation.POST("/unlink", r.reconciliationController.Unlink)
+								reconciliation.POST("/trigger", r.reconciliationController.TriggerReconciliation)
+							}
+						}
 					}
 				}
 			}

@@ -22,6 +22,7 @@ import (
 	"github.com/finance-tracker/backend/internal/application/usecase/dashboard"
 	"github.com/finance-tracker/backend/internal/application/usecase/goal"
 	"github.com/finance-tracker/backend/internal/application/usecase/group"
+	"github.com/finance-tracker/backend/internal/application/usecase/reconciliation"
 	"github.com/finance-tracker/backend/internal/application/usecase/transaction"
 	"github.com/finance-tracker/backend/internal/infra/db"
 	"github.com/finance-tracker/backend/internal/infra/server/router"
@@ -104,6 +105,7 @@ func main() {
 	var categoryController *controller.CategoryController
 	var transactionController *controller.TransactionController
 	var creditCardController *controller.CreditCardController
+	var reconciliationController *controller.ReconciliationController
 	var goalController *controller.GoalController
 	var groupController *controller.GroupController
 	var categoryRuleController *controller.CategoryRuleController
@@ -201,6 +203,15 @@ func main() {
 		collapseExpansionUseCase := creditcard.NewCollapseExpansionUseCase(transactionRepo)
 		getStatusUseCase := creditcard.NewGetStatusUseCase(transactionRepo)
 
+		// Create reconciliation repository and use cases
+		reconciliationRepo := persistence.NewReconciliationRepository(database.DB())
+		getPendingUseCase := reconciliation.NewGetPendingUseCase(reconciliationRepo)
+		getLinkedUseCase := reconciliation.NewGetLinkedUseCase(reconciliationRepo)
+		getSummaryUseCase := reconciliation.NewGetSummaryUseCase(reconciliationRepo)
+		manualLinkUseCase := reconciliation.NewManualLinkUseCase(reconciliationRepo)
+		unlinkUseCase := reconciliation.NewUnlinkUseCase(reconciliationRepo)
+		triggerReconciliationUseCase := reconciliation.NewTriggerReconciliationUseCase(reconciliationRepo)
+
 		// Create goal use cases
 		listGoalsUseCase := goal.NewListGoalsUseCase(goalRepo, categoryRepo)
 		createGoalUseCase := goal.NewCreateGoalUseCase(goalRepo, categoryRepo)
@@ -269,6 +280,16 @@ func main() {
 			getStatusUseCase,
 		)
 
+		// Create reconciliation controller
+		reconciliationController = controller.NewReconciliationController(
+			getPendingUseCase,
+			getLinkedUseCase,
+			getSummaryUseCase,
+			manualLinkUseCase,
+			unlinkUseCase,
+			triggerReconciliationUseCase,
+		)
+
 		// Create goal controller
 		goalController = controller.NewGoalController(
 			listGoalsUseCase,
@@ -321,7 +342,7 @@ func main() {
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server

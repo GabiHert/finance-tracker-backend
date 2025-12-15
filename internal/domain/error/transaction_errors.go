@@ -60,6 +60,17 @@ var (
 
 	// ErrBillPaymentNotOwned is returned when bill payment does not belong to user.
 	ErrBillPaymentNotOwned = errors.New("bill payment does not belong to user")
+
+	// Reconciliation errors.
+
+	// ErrPendingNotFound is returned when no pending CC transactions exist for a billing cycle.
+	ErrPendingNotFound = errors.New("no pending CC transactions for billing cycle")
+
+	// ErrCycleAlreadyLinked is returned when trying to link a cycle that is already linked.
+	ErrCycleAlreadyLinked = errors.New("billing cycle already has linked bill")
+
+	// ErrAmountMismatch is returned when amount difference exceeds tolerance without force.
+	ErrAmountMismatch = errors.New("amount difference exceeds tolerance")
 )
 
 // TransactionErrorCode defines error codes for transaction errors.
@@ -89,6 +100,11 @@ const (
 	ErrCodeNoPotentialMatches   TransactionErrorCode = "TXN-020005"
 	ErrCodeEmptyCCTransactions  TransactionErrorCode = "TXN-020006"
 	ErrCodeBillPaymentNotOwned  TransactionErrorCode = "TXN-020007"
+
+	// Reconciliation errors (03XXXX)
+	ErrCodePendingNotFound    TransactionErrorCode = "TXN-030001"
+	ErrCodeCycleAlreadyLinked TransactionErrorCode = "TXN-030002"
+	ErrCodeAmountMismatch     TransactionErrorCode = "TXN-030003"
 
 	// Internal errors (99XXXX)
 	ErrCodeInternalError TransactionErrorCode = "TXN-990001"

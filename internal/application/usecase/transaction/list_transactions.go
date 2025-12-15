@@ -40,11 +40,12 @@ type TransactionOutput struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	// Credit card import fields
-	BillingCycle           string // "YYYY-MM" format if imported from CC statement
-	IsExpandedBill         bool   // True if this is a bill payment that has been expanded
-	LinkedTransactionCount int    // Number of CC transactions linked to this bill
-	InstallmentCurrent     *int   // Current installment number
-	InstallmentTotal       *int   // Total installments
+	BillingCycle           string     // "YYYY-MM" format if imported from CC statement
+	IsExpandedBill         bool       // True if this is a bill payment that has been expanded
+	LinkedTransactionCount int        // Number of CC transactions linked to this bill
+	InstallmentCurrent     *int       // Current installment number
+	InstallmentTotal       *int       // Total installments
+	CreditCardPaymentID    *uuid.UUID // ID of linked bill payment, nil if pending
 }
 
 // CategoryOutput represents category information in transaction output.
@@ -169,6 +170,7 @@ func (uc *ListTransactionsUseCase) Execute(ctx context.Context, input ListTransa
 			LinkedTransactionCount: txnWithCat.LinkedTransactionCount,
 			InstallmentCurrent:     txnWithCat.Transaction.InstallmentCurrent,
 			InstallmentTotal:       txnWithCat.Transaction.InstallmentTotal,
+			CreditCardPaymentID:    txnWithCat.Transaction.CreditCardPaymentID,
 		}
 
 		// Add category if present
