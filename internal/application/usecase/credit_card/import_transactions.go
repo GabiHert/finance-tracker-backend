@@ -163,9 +163,10 @@ func (uc *ImportTransactionsUseCase) Execute(ctx context.Context, input ImportTr
 			UpdatedAt:           now,
 		}
 
-		// Track total amount for standalone imports
+		// Track total amount for standalone imports - preserve sign for algebraic sum
+		// Refunds (negative amounts like "Estorno de compra") should subtract from total
 		if !isPaymentReceived {
-			totalAmount = totalAmount.Add(txnInput.Amount.Abs())
+			totalAmount = totalAmount.Add(txnInput.Amount)
 		}
 
 		// Apply auto-categorization if enabled and not a payment received entry

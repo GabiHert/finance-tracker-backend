@@ -25,7 +25,8 @@ const (
 	// AmountToleranceAbsolute is the absolute tolerance for amount matching (R$ 10.00).
 	AmountToleranceAbsolute = 10.0
 	// DateProximityDays is the maximum days difference for date matching.
-	DateProximityDays = 5
+	// Set to 10 to accommodate CC statement dates vs bank payment dates (typically 5-7 days apart).
+	DateProximityDays = 10
 	// PaymentReceivedPattern matches "Pagamento recebido" entries in CC statements.
 	PaymentReceivedPattern = `(?i)pagamento\s+recebido`
 )
@@ -129,12 +130,14 @@ func (uc *PreviewImportUseCase) Execute(ctx context.Context, input PreviewImport
 	for _, txn := range input.Transactions {
 		if paymentReceivedRegex.MatchString(txn.Description) {
 			// This is the "Pagamento recebido" entry - typically negative in CC statement
+			// Use Abs() here since we want the positive reference amount for matching
 			paymentReceivedAmount = paymentReceivedAmount.Add(txn.Amount.Abs())
 			ccPaymentDate = txn.Date
 			ccPaymentAmount = txn.Amount
 		} else {
-			// Regular CC transaction
-			totalAmount = totalAmount.Add(txn.Amount.Abs())
+			// Regular CC transaction - preserve sign for algebraic sum
+			// Refunds (negative amounts like "Estorno de compra") should subtract from total
+			totalAmount = totalAmount.Add(txn.Amount)
 			transactionsToImport = append(transactionsToImport, txn)
 		}
 	}
