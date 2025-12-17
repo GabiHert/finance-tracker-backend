@@ -16,6 +16,12 @@ type Config struct {
 	JWT      JWTConfig
 	MinIO    MinIOConfig
 	Email    EmailConfig
+	AI       AIConfig
+}
+
+// AIConfig holds AI service configuration.
+type AIConfig struct {
+	GeminiAPIKey string
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -110,6 +116,9 @@ func Load() *Config {
 			WorkerEnabled: getEnvAsBool("EMAIL_WORKER_ENABLED", true),
 			PollInterval:  getEnvAsDuration("EMAIL_WORKER_POLL_INTERVAL", 5*time.Second),
 			BatchSize:     getEnvAsInt("EMAIL_WORKER_BATCH_SIZE", 10),
+		},
+		AI: AIConfig{
+			GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
 		},
 	}
 }

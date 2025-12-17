@@ -15,6 +15,7 @@ import (
 
 	"github.com/finance-tracker/backend/config"
 	"github.com/finance-tracker/backend/internal/application/adapter"
+	aicategorization "github.com/finance-tracker/backend/internal/application/usecase/ai_categorization"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
@@ -82,6 +83,7 @@ func main() {
 			&model.GroupInviteModel{},
 			&model.CategoryRuleModel{},
 			&model.EmailQueueModel{},
+			&model.AISuggestionModel{},
 		); err != nil {
 			slog.Error("Failed to run database migrations", "error", err)
 			os.Exit(1)
@@ -110,6 +112,7 @@ func main() {
 	var groupController *controller.GroupController
 	var categoryRuleController *controller.CategoryRuleController
 	var dashboardController *controller.DashboardController
+	var aiCategorizationController *controller.AiCategorizationController
 	var loginRateLimiter *middleware.RateLimiter
 	var authMiddleware *middleware.AuthMiddleware
 
@@ -123,11 +126,14 @@ func main() {
 		groupRepo := persistence.NewGroupRepository(database.DB())
 		categoryRuleRepo := persistence.NewCategoryRuleRepository(database.DB())
 		emailQueueRepo := persistence.NewEmailQueueRepository(database.DB())
+		aiSuggestionRepo := persistence.NewAISuggestionRepository(database.DB())
 
 		// Create adapters/services
 		passwordService := adapters.NewPasswordService()
 		tokenService := adapters.NewTokenService(cfg.JWT.Secret, tokenRepo)
 		resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
+		geminiService := adapters.NewGeminiService(cfg.AI.GeminiAPIKey)
+		processingTracker := aicategorization.NewInMemoryProcessingTracker()
 
 		// Create email infrastructure
 		var emailService adapter.EmailService
@@ -332,17 +338,35 @@ func main() {
 		// Create dashboard controller
 		dashboardController = controller.NewDashboardController(getCategoryTrendsUseCase)
 
+		// Create AI categorization use cases
+		aiGetStatusUseCase := aicategorization.NewGetStatusUseCase(transactionRepo, aiSuggestionRepo, processingTracker)
+		aiStartCategorizationUseCase := aicategorization.NewStartCategorizationUseCase(transactionRepo, categoryRepo, aiSuggestionRepo, geminiService, processingTracker)
+		aiGetSuggestionsUseCase := aicategorization.NewGetSuggestionsUseCase(aiSuggestionRepo)
+		aiApproveSuggestionUseCase := aicategorization.NewApproveSuggestionUseCase(aiSuggestionRepo, categoryRepo, transactionRepo, categoryRuleRepo)
+		aiRejectSuggestionUseCase := aicategorization.NewRejectSuggestionUseCase(aiSuggestionRepo, geminiService, transactionRepo, categoryRepo)
+		aiClearSuggestionsUseCase := aicategorization.NewClearSuggestionsUseCase(aiSuggestionRepo)
+
+		// Create AI categorization controller
+		aiCategorizationController = controller.NewAiCategorizationController(
+			aiGetStatusUseCase,
+			aiStartCategorizationUseCase,
+			aiGetSuggestionsUseCase,
+			aiApproveSuggestionUseCase,
+			aiRejectSuggestionUseCase,
+			aiClearSuggestionsUseCase,
+		)
+
 		// Create middleware
 		loginRateLimiter = middleware.NewRateLimiter()
 		authMiddleware = middleware.NewAuthMiddleware(tokenService)
 
-		slog.Info("Auth, Category, Transaction, Goal, Group, CategoryRule, Dashboard, and Email systems initialized successfully")
+		slog.Info("Auth, Category, Transaction, Goal, Group, CategoryRule, Dashboard, AI Categorization, and Email systems initialized successfully")
 	} else {
 		slog.Warn("Auth, Category, Transaction, Goal, Group, and Email systems not initialized due to missing database connection")
 	}
 
 	// Setup router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, aiCategorizationController, loginRateLimiter, authMiddleware)
 	engine := r.Setup(cfg.Server.Environment)
 
 	// Create HTTP server

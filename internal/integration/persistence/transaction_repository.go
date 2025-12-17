@@ -808,3 +808,19 @@ func (r *transactionRepository) GetExpensesByDateRange(
 
 	return expenses, nil
 }
+
+// CountUncategorizedByUser counts all transactions for a user that have no category assigned.
+func (r *transactionRepository) CountUncategorizedByUser(ctx context.Context, userID uuid.UUID) (int, error) {
+	var count int64
+	result := r.db.WithContext(ctx).
+		Model(&model.TransactionModel{}).
+		Where("user_id = ?", userID).
+		Where("category_id IS NULL").
+		Count(&count)
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to count uncategorized transactions: %w", result.Error)
+	}
+
+	return int(count), nil
+}

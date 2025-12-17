@@ -392,7 +392,7 @@ func (t *testContext) startServer() {
 			loginRateLimiter := middleware.NewRateLimiter()
 			authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
-			r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, nil, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
+			r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, nil, nil, goalController, groupController, categoryRuleController, dashboardController, nil, loginRateLimiter, authMiddleware)
 			engine := r.Setup("test")
 
 			addr := fmt.Sprintf(":%d", testServerPort)
