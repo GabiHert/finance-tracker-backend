@@ -14,6 +14,35 @@ import (
 	domainerror "github.com/finance-tracker/backend/internal/domain/error"
 )
 
+const (
+	// BatchSize is the number of transactions to process per AI request.
+	// Keeping this small (30-50) ensures Gemini can respond within timeout.
+	BatchSize = 40
+
+	// BatchTimeout is the timeout for processing a single batch.
+	// Should be generous enough for AI to process BatchSize transactions.
+	BatchTimeout = 45 * time.Second
+
+	// MaxBatches is the maximum number of batches to process.
+	// Prevents runaway processing (40 * 50 = 2000 transactions max).
+	MaxBatches = 50
+)
+
+// splitIntoBatches divides transactions into batches of BatchSize.
+func splitIntoBatches(transactions []*adapter.TransactionForAI) [][]*adapter.TransactionForAI {
+	batches := make([][]*adapter.TransactionForAI, 0)
+
+	for i := 0; i < len(transactions); i += BatchSize {
+		end := i + BatchSize
+		if end > len(transactions) {
+			end = len(transactions)
+		}
+		batches = append(batches, transactions[i:end])
+	}
+
+	return batches
+}
+
 // StartCategorizationInput represents the input for starting AI categorization.
 type StartCategorizationInput struct {
 	UserID uuid.UUID
@@ -117,7 +146,7 @@ func (uc *StartCategorizationUseCase) getUncategorizedTransactions(ctx context.C
 	return uncategorized, nil
 }
 
-// processCategorizationAsync processes categorization in the background.
+// processCategorizationAsync processes categorization in the background using batched requests.
 func (uc *StartCategorizationUseCase) processCategorizationAsync(ctx context.Context, userID uuid.UUID, transactions []*entity.Transaction, jobID string) {
 	startTime := time.Now()
 	logger := slog.Default().With("jobID", jobID, "userID", userID.String(), "transactionCount", len(transactions))
@@ -130,10 +159,6 @@ func (uc *StartCategorizationUseCase) processCategorizationAsync(ctx context.Con
 		}
 		logger.Info("AI categorization process completed", "duration", time.Since(startTime).String())
 	}()
-
-	// Add timeout to context (2 minutes max for AI processing)
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
 
 	// Get existing categories for the user
 	categories, err := uc.categoryRepo.FindByOwner(ctx, entity.OwnerTypeUser, userID)
@@ -168,27 +193,70 @@ func (uc *StartCategorizationUseCase) processCategorizationAsync(ctx context.Con
 		}
 	}
 
-	// Call AI service
-	logger.Info("Calling AI service")
-	aiStartTime := time.Now()
+	// Split transactions into batches
+	batches := splitIntoBatches(txsForAI)
+	totalBatches := len(batches)
 
-	request := &adapter.AICategorizationRequest{
-		UserID:             userID,
-		Transactions:       txsForAI,
-		ExistingCategories: catsForAI,
+	// Limit to MaxBatches
+	if totalBatches > MaxBatches {
+		logger.Warn("Transaction count exceeds maximum, processing first batches only",
+			"totalTransactions", len(transactions),
+			"maxProcessed", MaxBatches*BatchSize,
+		)
+		batches = batches[:MaxBatches]
+		totalBatches = MaxBatches
 	}
 
-	results, err := uc.aiService.Categorize(ctx, request)
-	if err != nil {
-		logger.Error("AI service failed", "error", err.Error(), "duration", time.Since(aiStartTime).String())
-		uc.setProcessingError(userID, err)
-		return
+	logger.Info("Processing transactions in batches",
+		"batchCount", totalBatches,
+		"batchSize", BatchSize,
+	)
+
+	// Process each batch and collect results
+	allResults := make([]*adapter.AICategorizationResult, 0)
+
+	for batchNum, batch := range batches {
+		batchLogger := logger.With("batch", batchNum+1, "totalBatches", totalBatches, "batchTransactions", len(batch))
+		batchLogger.Info("Processing batch")
+
+		// Create per-batch timeout context
+		batchCtx, batchCancel := context.WithTimeout(ctx, BatchTimeout)
+
+		request := &adapter.AICategorizationRequest{
+			UserID:             userID,
+			Transactions:       batch,
+			ExistingCategories: catsForAI,
+		}
+
+		batchStartTime := time.Now()
+		results, err := uc.aiService.Categorize(batchCtx, request)
+		batchCancel()
+
+		if err != nil {
+			batchLogger.Error("Batch processing failed",
+				"error", err.Error(),
+				"duration", time.Since(batchStartTime).String(),
+			)
+			uc.setProcessingError(userID, err)
+			return
+		}
+
+		batchLogger.Info("Batch completed",
+			"resultCount", len(results),
+			"duration", time.Since(batchStartTime).String(),
+		)
+
+		allResults = append(allResults, results...)
 	}
-	logger.Info("AI service completed", "resultCount", len(results), "duration", time.Since(aiStartTime).String())
+
+	logger.Info("AI service completed all batches",
+		"totalResults", len(allResults),
+		"totalDuration", time.Since(startTime).String(),
+	)
 
 	// Convert results to suggestions and save
-	suggestions := make([]*entity.AISuggestion, 0, len(results))
-	for _, result := range results {
+	suggestions := make([]*entity.AISuggestion, 0, len(allResults))
+	for _, result := range allResults {
 		var suggestion *entity.AISuggestion
 
 		if result.SuggestedCategoryID != nil {
