@@ -86,24 +86,45 @@ func (uc *ApproveSuggestionUseCase) Execute(ctx context.Context, input ApproveSu
 	var categoryName string
 	wasNewCategoryCreated := false
 
-	// Create category if it's a new category suggestion
+	// Create category if it's a new category suggestion, OR use existing if name matches
 	if suggestion.SuggestedCategoryNew != nil {
-		newCategory := entity.NewCategory(
-			suggestion.SuggestedCategoryNew.Name,
-			suggestion.SuggestedCategoryNew.Color,
-			suggestion.SuggestedCategoryNew.Icon,
+		suggestedName := suggestion.SuggestedCategoryNew.Name
+
+		// Check if category with this name already exists for the user
+		existingCategory, err := uc.categoryRepo.FindByNameAndOwner(
+			ctx,
+			suggestedName,
 			entity.OwnerTypeUser,
 			input.UserID,
-			entity.CategoryTypeExpense, // Default to expense, could be enhanced
 		)
-
-		if err := uc.categoryRepo.Create(ctx, newCategory); err != nil {
-			return nil, fmt.Errorf("failed to create category: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check existing category: %w", err)
 		}
 
-		categoryID = newCategory.ID
-		categoryName = newCategory.Name
-		wasNewCategoryCreated = true
+		if existingCategory != nil {
+			// Use existing category instead of creating duplicate
+			categoryID = existingCategory.ID
+			categoryName = existingCategory.Name
+			wasNewCategoryCreated = false
+		} else {
+			// Create new category since name is unique
+			newCategory := entity.NewCategory(
+				suggestedName,
+				suggestion.SuggestedCategoryNew.Color,
+				suggestion.SuggestedCategoryNew.Icon,
+				entity.OwnerTypeUser,
+				input.UserID,
+				entity.CategoryTypeExpense, // Default to expense, could be enhanced
+			)
+
+			if err := uc.categoryRepo.Create(ctx, newCategory); err != nil {
+				return nil, fmt.Errorf("failed to create category: %w", err)
+			}
+
+			categoryID = newCategory.ID
+			categoryName = newCategory.Name
+			wasNewCategoryCreated = true
+		}
 	} else if suggestion.SuggestedCategoryID != nil {
 		categoryID = *suggestion.SuggestedCategoryID
 

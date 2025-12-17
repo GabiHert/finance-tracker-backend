@@ -77,21 +77,60 @@ func (s *GeminiService) Categorize(ctx context.Context, request *adapter.AICateg
 func (s *GeminiService) buildPrompt(request *adapter.AICategorizationRequest) string {
 	var sb strings.Builder
 
-	sb.WriteString(`You are a financial transaction categorization expert. Your task is to analyze uncategorized transactions and suggest appropriate categories.
+	sb.WriteString(`Voce e um especialista em categorizacao de transacoes financeiras. Sua tarefa e analisar transacoes sem categoria e sugerir categorias apropriadas.
 
-For each transaction, you should:
-1. Identify a pattern (keyword) that can be used to match similar transactions
-2. Suggest either an existing category or propose a new one
-3. Identify the match type: "exact", "startsWith", or "contains"
+IMPORTANTE - IDIOMA:
+- Todas as respostas devem ser em Portugues Brasileiro
+- Nomes de categorias DEVEM ser em Portugues, EXCETO para termos comumente usados em ingles no Brasil:
+  * Pet Shop, Delivery, Drive Thru, Shopping, Fast Food, Streaming, Fitness, E-commerce, Marketplace
+  * Nomes de apps/servicos: Uber, iFood, Rappi, Netflix, Spotify, etc.
+- Para outras categorias, use Portugues Brasileiro natural:
+  * Supermercado, Restaurante, Transporte, Saude, Educacao, Lazer, Moradia, Vestuario
+  * Servicos, Assinaturas, Viagem, Alimentacao, Combustivel, Farmacia, Padaria, Banco
 
-IMPORTANT RULES:
-- Prefer existing categories when they match well
-- For new categories, suggest a name, icon (from common icon libraries like lucide), and a hex color
-- The match keyword should be specific enough to avoid false positives but general enough to catch similar transactions
-- Use "contains" for partial matches, "startsWith" for prefix matches, "exact" for exact matches
-- Group similar transactions together by their match keyword
+Para cada transacao, voce deve:
+1. Identificar um padrao (palavra-chave) para corresponder transacoes similares
+2. Sugerir uma categoria existente ou propor uma nova
+3. Identificar o tipo de correspondencia: "exact", "startsWith", ou "contains"
 
-EXISTING CATEGORIES:
+REGRAS IMPORTANTES:
+- Prefira categorias existentes quando correspondem bem
+- Para novas categorias, sugira nome (em Portugues, exceto termos comuns em ingles), icone (da lista abaixo), e cor hex
+- A palavra-chave deve ser especifica para evitar falsos positivos, mas geral para capturar transacoes similares
+- Use "contains" para parciais, "startsWith" para prefixo, "exact" para exatas
+- Agrupe transacoes similares pelo padrao
+
+ICONES DISPONIVEIS (use APENAS estes nomes exatos):
+Financeiro: wallet, credit-card, bank, receipt, coins, piggy-bank, chart-line, dollar-sign
+Alimentacao: utensils, coffee, pizza, apple, wine
+Transporte: car, bus, plane, train, bike, gas-pump
+Casa: home, bed, sofa, lamp, wrench
+Entretenimento: music, film, gamepad, tv, ticket
+Saude: heart, medical, pill, dumbbell
+Educacao: book, graduation-cap, pencil
+Compras: shopping-bag, shopping-cart, tag, gift, percent
+Utilidades: bolt, wifi, phone, droplet, flame
+Outros: briefcase, globe, star
+
+SUGESTOES DE ICONES POR TIPO DE CATEGORIA:
+- Supermercado: shopping-cart
+- Restaurante/Alimentacao: utensils
+- Pet Shop: heart
+- Farmacia: medical
+- Transporte/Uber: car
+- Combustivel/Posto: gas-pump
+- Streaming/Assinaturas: tv
+- Delivery/iFood: utensils
+- Shopping: shopping-bag
+- Academia/Fitness: dumbbell
+- Educacao: book
+- Banco/Taxas: bank
+- Moradia/Aluguel: home
+- Lazer: gamepad
+- Viagem: plane
+- Servicos: briefcase
+
+CATEGORIAS EXISTENTES:
 `)
 
 	if len(request.ExistingCategories) > 0 {
@@ -100,10 +139,10 @@ EXISTING CATEGORIES:
 				cat.ID, cat.Name, cat.Type, cat.Icon))
 		}
 	} else {
-		sb.WriteString("(No existing categories)\n")
+		sb.WriteString("(Nenhuma categoria existente)\n")
 	}
 
-	sb.WriteString("\nTRANSACTIONS TO CATEGORIZE:\n")
+	sb.WriteString("\nTRANSACOES PARA CATEGORIZAR:\n")
 	for _, tx := range request.Transactions {
 		sb.WriteString(fmt.Sprintf("- ID: %s, Description: \"%s\", Amount: %s, Date: %s, Type: %s\n",
 			tx.ID, tx.Description, tx.Amount, tx.Date, tx.Type))
@@ -111,21 +150,23 @@ EXISTING CATEGORIES:
 
 	sb.WriteString(`
 
-Respond with a JSON array of suggestions. Each suggestion should have:
+Responda com um array JSON de sugestoes. Cada sugestao deve ter:
 {
-  "transaction_id": "uuid of the primary transaction",
-  "suggested_category_id": "uuid of existing category or null",
-  "suggested_category_new": { "name": "string", "icon": "string", "color": "#XXXXXX" } or null,
+  "transaction_id": "uuid da transacao principal",
+  "suggested_category_id": "uuid da categoria existente ou null",
+  "suggested_category_new": { "name": "string em Portugues", "icon": "string da lista de icones", "color": "#XXXXXX" } ou null,
   "match_type": "contains" | "startsWith" | "exact",
-  "match_keyword": "the keyword/pattern to match",
-  "affected_transaction_ids": ["uuids of other transactions that would match this pattern"],
+  "match_keyword": "palavra-chave/padrao para correspondencia",
+  "affected_transaction_ids": ["uuids de outras transacoes que correspondem ao padrao"],
   "confidence": 0.0-1.0,
-  "reasoning": "brief explanation"
+  "reasoning": "breve explicacao em Portugues"
 }
 
-Group similar transactions together. If multiple transactions would match the same pattern, include one suggestion with all affected IDs.
+Agrupe transacoes similares. Se multiplas transacoes correspondem ao mesmo padrao, inclua uma sugestao com todos os IDs afetados.
 
-RESPONSE FORMAT: Return only the JSON array, no additional text.
+IMPORTANTE: Use APENAS icones da lista fornecida acima. Nao invente nomes de icones.
+
+FORMATO DE RESPOSTA: Retorne apenas o array JSON, sem texto adicional.
 `)
 
 	return sb.String()
