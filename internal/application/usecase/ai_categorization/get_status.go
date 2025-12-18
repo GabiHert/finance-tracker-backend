@@ -18,12 +18,13 @@ type GetStatusInput struct {
 
 // GetStatusOutput represents the output of getting AI categorization status.
 type GetStatusOutput struct {
-	UncategorizedCount      int              `json:"uncategorized_count"`
-	IsProcessing            bool             `json:"is_processing"`
-	PendingSuggestionsCount int              `json:"pending_suggestions_count"`
-	JobID                   string           `json:"job_id,omitempty"`
-	HasError                bool             `json:"has_error"`
-	Error                   *ProcessingError `json:"error,omitempty"`
+	UncategorizedCount      int                 `json:"uncategorized_count"`
+	IsProcessing            bool                `json:"is_processing"`
+	PendingSuggestionsCount int                 `json:"pending_suggestions_count"`
+	JobID                   string              `json:"job_id,omitempty"`
+	HasError                bool                `json:"has_error"`
+	Error                   *ProcessingError    `json:"error,omitempty"`
+	Progress                *ProcessingProgress `json:"progress,omitempty"`
 }
 
 // GetStatusUseCase handles retrieving AI categorization status.
@@ -31,6 +32,14 @@ type GetStatusUseCase struct {
 	transactionRepo   adapter.TransactionRepository
 	suggestionRepo    adapter.AISuggestionRepository
 	processingTracker ProcessingTracker
+}
+
+// ProcessingProgress tracks the progress of batch processing.
+type ProcessingProgress struct {
+	ProcessedTransactions int `json:"processed_transactions"`
+	TotalTransactions     int `json:"total_transactions"`
+	CurrentBatch          int `json:"current_batch"`
+	TotalBatches          int `json:"total_batches"`
 }
 
 // ProcessingTracker interface for tracking processing state (will be implemented in-memory or Redis).
@@ -46,6 +55,11 @@ type ProcessingTracker interface {
 	GetError(userID uuid.UUID) *ProcessingError
 	ClearError(userID uuid.UUID)
 	HasError(userID uuid.UUID) bool
+
+	// Progress tracking methods.
+	SetProgress(userID uuid.UUID, progress ProcessingProgress)
+	GetProgress(userID uuid.UUID) ProcessingProgress
+	ClearProgress(userID uuid.UUID)
 }
 
 // NewGetStatusUseCase creates a new GetStatusUseCase instance.
@@ -93,6 +107,15 @@ func (uc *GetStatusUseCase) Execute(ctx context.Context, input GetStatusInput) (
 		}
 	}
 
+	// Get progress if processing
+	var progress *ProcessingProgress
+	if isProcessing && uc.processingTracker != nil {
+		p := uc.processingTracker.GetProgress(input.UserID)
+		if p.TotalTransactions > 0 {
+			progress = &p
+		}
+	}
+
 	return &GetStatusOutput{
 		UncategorizedCount:      uncategorizedCount,
 		IsProcessing:            isProcessing,
@@ -100,6 +123,7 @@ func (uc *GetStatusUseCase) Execute(ctx context.Context, input GetStatusInput) (
 		JobID:                   jobID,
 		HasError:                hasError,
 		Error:                   processingError,
+		Progress:                progress,
 	}, nil
 }
 
@@ -113,6 +137,7 @@ type InMemoryProcessingTracker struct {
 	mu         sync.RWMutex
 	processing map[uuid.UUID]string
 	errors     map[uuid.UUID]*ProcessingError
+	progress   map[uuid.UUID]ProcessingProgress
 }
 
 // NewInMemoryProcessingTracker creates a new in-memory processing tracker.
@@ -120,6 +145,7 @@ func NewInMemoryProcessingTracker() *InMemoryProcessingTracker {
 	return &InMemoryProcessingTracker{
 		processing: make(map[uuid.UUID]string),
 		errors:     make(map[uuid.UUID]*ProcessingError),
+		progress:   make(map[uuid.UUID]ProcessingProgress),
 	}
 }
 
@@ -179,6 +205,27 @@ func (t *InMemoryProcessingTracker) HasError(userID uuid.UUID) bool {
 	defer t.mu.RUnlock()
 	_, ok := t.errors[userID]
 	return ok
+}
+
+// SetProgress stores the progress for a user.
+func (t *InMemoryProcessingTracker) SetProgress(userID uuid.UUID, progress ProcessingProgress) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.progress[userID] = progress
+}
+
+// GetProgress retrieves the progress for a user.
+func (t *InMemoryProcessingTracker) GetProgress(userID uuid.UUID) ProcessingProgress {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.progress[userID]
+}
+
+// ClearProgress removes the progress for a user.
+func (t *InMemoryProcessingTracker) ClearProgress(userID uuid.UUID) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.progress, userID)
 }
 
 // TransactionForCategorization represents minimal transaction data for AI processing.
