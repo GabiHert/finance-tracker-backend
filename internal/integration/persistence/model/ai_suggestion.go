@@ -107,7 +107,7 @@ func (m *AISuggestionModel) ToEntity() *entity.AISuggestion {
 func (m *AISuggestionModel) ToEntityWithDetails() *entity.AISuggestionWithDetails {
 	result := &entity.AISuggestionWithDetails{
 		Suggestion:               m.ToEntity(),
-		AffectedTransactionCount: len(m.AffectedTransactionIDs),
+		AffectedTransactionCount: len(m.AffectedTransactionIDs) + 1, // +1 for the main transaction
 		AffectedTransactions:     make([]*entity.Transaction, 0),
 	}
 
@@ -126,23 +126,28 @@ func (m *AISuggestionModel) ToEntityWithDetails() *entity.AISuggestionWithDetail
 func (m *AISuggestionModel) ToEntityWithDetailsAndTransactions(txnMap map[uuid.UUID]*TransactionModel) *entity.AISuggestionWithDetails {
 	result := &entity.AISuggestionWithDetails{
 		Suggestion:               m.ToEntity(),
-		AffectedTransactionCount: len(m.AffectedTransactionIDs),
-		AffectedTransactions:     make([]*entity.Transaction, 0, len(m.AffectedTransactionIDs)),
+		AffectedTransactionCount: len(m.AffectedTransactionIDs) + 1, // +1 for the main transaction
+		AffectedTransactions:     make([]*entity.Transaction, 0, len(m.AffectedTransactionIDs)+1),
 	}
 
 	if m.Transaction != nil {
 		result.Transaction = m.Transaction.ToEntity()
+		// Add main transaction to the affected transactions list
+		result.AffectedTransactions = append(result.AffectedTransactions, result.Transaction)
 	}
 
 	if m.Category != nil {
 		result.Category = m.Category.ToEntity()
 	}
 
-	// Populate affected transactions from the lookup map
+	// Populate affected transactions from the lookup map, skipping duplicates
 	for _, idStr := range m.AffectedTransactionIDs {
 		if id, err := uuid.Parse(idStr); err == nil {
 			if txn, ok := txnMap[id]; ok {
-				result.AffectedTransactions = append(result.AffectedTransactions, txn.ToEntity())
+				// Skip if this is the main transaction (already added above)
+				if txn.ID != m.TransactionID {
+					result.AffectedTransactions = append(result.AffectedTransactions, txn.ToEntity())
+				}
 			}
 		}
 	}
