@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/finance-tracker/backend/internal/application/adapter"
 	"github.com/finance-tracker/backend/internal/domain/entity"
