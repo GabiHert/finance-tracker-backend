@@ -37,7 +37,7 @@ type MatchOutput struct {
 type AffectedTransactionOutput struct {
 	ID          string
 	Description string
-	Amount      float64
+	Amount      decimal.Decimal
 	Date        string
 }
 
@@ -56,7 +56,7 @@ type SuggestionOutput struct {
 type SkippedTransactionOutput struct {
 	ID          string
 	Description string
-	Amount      float64
+	Amount      decimal.Decimal
 	Date        string
 	SkipReason  string
 }
@@ -146,11 +146,10 @@ func (uc *GetSuggestionsUseCase) toSuggestionOutput(s *entity.AISuggestionWithDe
 	output.AffectedTransactions = make([]AffectedTransactionOutput, 0, len(s.AffectedTransactions))
 	for _, t := range s.AffectedTransactions {
 		if t != nil {
-			amount, _ := t.Amount.Float64()
 			output.AffectedTransactions = append(output.AffectedTransactions, AffectedTransactionOutput{
 				ID:          t.ID.String(),
 				Description: t.Description,
-				Amount:      amount,
+				Amount:      t.Amount,
 				Date:        t.Date.Format("2006-01-02"),
 			})
 		}

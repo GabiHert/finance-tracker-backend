@@ -292,11 +292,10 @@ func toSuggestionOutputFromDetails(s *entity.AISuggestionWithDetails) Suggestion
 	output.AffectedTransactions = make([]AffectedTransactionOutput, 0, len(s.AffectedTransactions))
 	for _, t := range s.AffectedTransactions {
 		if t != nil {
-			amount, _ := t.Amount.Float64()
 			output.AffectedTransactions = append(output.AffectedTransactions, AffectedTransactionOutput{
 				ID:          t.ID.String(),
 				Description: t.Description,
-				Amount:      amount,
+				Amount:      t.Amount,
 				Date:        t.Date.Format("2006-01-02"),
 			})
 		}
