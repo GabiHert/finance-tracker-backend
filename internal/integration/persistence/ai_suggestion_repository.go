@@ -115,9 +115,40 @@ func (r *aiSuggestionRepository) GetPendingByUserID(ctx context.Context, userID 
 		return nil, result.Error
 	}
 
+	// Collect all unique affected transaction IDs from all suggestions
+	txnIDSet := make(map[uuid.UUID]struct{})
+	for _, sm := range suggestionModels {
+		for _, idStr := range sm.AffectedTransactionIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				txnIDSet[id] = struct{}{}
+			}
+		}
+	}
+
+	// Fetch all affected transactions in one batch query
+	txnMap := make(map[uuid.UUID]*model.TransactionModel)
+	if len(txnIDSet) > 0 {
+		allTxnIDs := make([]uuid.UUID, 0, len(txnIDSet))
+		for id := range txnIDSet {
+			allTxnIDs = append(allTxnIDs, id)
+		}
+
+		var transactions []model.TransactionModel
+		if err := r.db.WithContext(ctx).
+			Where("id IN ?", allTxnIDs).
+			Find(&transactions).Error; err != nil {
+			// Log error but continue - some transactions might be deleted
+		}
+
+		for i := range transactions {
+			txnMap[transactions[i].ID] = &transactions[i]
+		}
+	}
+
+	// Build results with populated affected transactions
 	suggestions := make([]*entity.AISuggestionWithDetails, len(suggestionModels))
-	for i, sm := range suggestionModels {
-		suggestions[i] = sm.ToEntityWithDetails()
+	for i := range suggestionModels {
+		suggestions[i] = suggestionModels[i].ToEntityWithDetailsAndTransactions(txnMap)
 	}
 	return suggestions, nil
 }

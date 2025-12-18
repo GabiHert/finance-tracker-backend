@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +47,189 @@ const (
 	// MaxRetryDelay caps the maximum wait time between retries.
 	MaxRetryDelay = 120 * time.Second
 )
+
+// merchantPattern defines a pattern for extracting merchant base names from transaction descriptions.
+type merchantPattern struct {
+	pattern     *regexp.Regexp
+	extractFunc func(matches []string, desc string) string
+}
+
+// merchantPatterns contains patterns for common merchant descriptions.
+// Order matters - more specific patterns should come first.
+var merchantPatterns = []merchantPattern{
+	// Uber patterns: "UBER *TRIP", "UBER *EATS", etc.
+	{
+		pattern: regexp.MustCompile(`(?i)^UBER\s*\*`),
+		extractFunc: func(_ []string, _ string) string {
+			return "UBER"
+		},
+	},
+	// iFood patterns
+	{
+		pattern: regexp.MustCompile(`(?i)IFOOD`),
+		extractFunc: func(_ []string, _ string) string {
+			return "IFOOD"
+		},
+	},
+	// Rappi patterns
+	{
+		pattern: regexp.MustCompile(`(?i)RAPPI`),
+		extractFunc: func(_ []string, _ string) string {
+			return "RAPPI"
+		},
+	},
+	// Netflix patterns
+	{
+		pattern: regexp.MustCompile(`(?i)NETFLIX`),
+		extractFunc: func(_ []string, _ string) string {
+			return "NETFLIX"
+		},
+	},
+	// Spotify patterns
+	{
+		pattern: regexp.MustCompile(`(?i)SPOTIFY`),
+		extractFunc: func(_ []string, _ string) string {
+			return "SPOTIFY"
+		},
+	},
+	// Amazon patterns
+	{
+		pattern: regexp.MustCompile(`(?i)AMAZON`),
+		extractFunc: func(_ []string, _ string) string {
+			return "AMAZON"
+		},
+	},
+	// YouTube/Google patterns
+	{
+		pattern: regexp.MustCompile(`(?i)YOUTUBE`),
+		extractFunc: func(_ []string, _ string) string {
+			return "YOUTUBE"
+		},
+	},
+	{
+		pattern: regexp.MustCompile(`(?i)^GOOGLE\s*\*`),
+		extractFunc: func(_ []string, _ string) string {
+			return "GOOGLE"
+		},
+	},
+	// MercadoLivre/MercadoPago patterns
+	{
+		pattern: regexp.MustCompile(`(?i)MERCADOLIVRE|MERCPAGO`),
+		extractFunc: func(_ []string, _ string) string {
+			return "MERCADOLIVRE"
+		},
+	},
+	// PIX patterns: "PAG*" prefix
+	{
+		pattern: regexp.MustCompile(`(?i)^PAG\*`),
+		extractFunc: func(_ []string, _ string) string {
+			return "PAG*PIX"
+		},
+	},
+	// PicPay patterns
+	{
+		pattern: regexp.MustCompile(`(?i)PICPAY`),
+		extractFunc: func(_ []string, _ string) string {
+			return "PICPAY"
+		},
+	},
+	// Nubank patterns
+	{
+		pattern: regexp.MustCompile(`(?i)NUBANK`),
+		extractFunc: func(_ []string, _ string) string {
+			return "NUBANK"
+		},
+	},
+	// PG * patterns: "PG *COMPANY"
+	{
+		pattern: regexp.MustCompile(`(?i)^PG\s*\*\s*(\w+)`),
+		extractFunc: func(matches []string, _ string) string {
+			if len(matches) > 1 {
+				return strings.ToUpper(matches[1])
+			}
+			return "PG*"
+		},
+	},
+	// Generic prefix patterns: extract first significant word
+	{
+		pattern: regexp.MustCompile(`(?i)^([A-Z]+(?:\s*[A-Z]+)?)`),
+		extractFunc: func(matches []string, desc string) string {
+			if len(matches) > 1 {
+				// Return first word or two, cleaned up
+				words := strings.Fields(matches[1])
+				if len(words) > 0 {
+					return strings.ToUpper(words[0])
+				}
+			}
+			// Fallback: first word of description
+			words := strings.Fields(desc)
+			if len(words) > 0 {
+				return strings.ToUpper(words[0])
+			}
+			return desc
+		},
+	},
+}
+
+// extractMerchantKey extracts a normalized merchant key from a transaction description.
+// This key is used to group similar transactions together.
+func extractMerchantKey(description string) string {
+	desc := strings.ToUpper(strings.TrimSpace(description))
+	if desc == "" {
+		return ""
+	}
+
+	for _, mp := range merchantPatterns {
+		matches := mp.pattern.FindStringSubmatch(desc)
+		if matches != nil {
+			return mp.extractFunc(matches, desc)
+		}
+	}
+
+	// Fallback: return first word
+	words := strings.Fields(desc)
+	if len(words) > 0 {
+		return words[0]
+	}
+	return desc
+}
+
+// transactionWithKey pairs a transaction with its extracted merchant key for sorting.
+type transactionWithKey struct {
+	transaction *adapter.TransactionForAI
+	merchantKey string
+}
+
+// sortTransactionsByMerchant sorts transactions so similar ones (same merchant) are adjacent.
+// This increases the chance that the AI will see related transactions in the same batch.
+func sortTransactionsByMerchant(transactions []*adapter.TransactionForAI) []*adapter.TransactionForAI {
+	if len(transactions) <= 1 {
+		return transactions
+	}
+
+	// Extract merchant keys for all transactions
+	txsWithKeys := make([]transactionWithKey, len(transactions))
+	for i, tx := range transactions {
+		txsWithKeys[i] = transactionWithKey{
+			transaction: tx,
+			merchantKey: extractMerchantKey(tx.Description),
+		}
+	}
+
+	// Sort by merchant key to group similar transactions.
+	// Using stable sort to preserve original order within each merchant group.
+	sort.SliceStable(txsWithKeys, func(i, j int) bool {
+		return txsWithKeys[i].merchantKey < txsWithKeys[j].merchantKey
+	})
+
+	// Extract sorted transactions
+	sorted := make([]*adapter.TransactionForAI, len(transactions))
+	for i, twk := range txsWithKeys {
+		sorted[i] = twk.transaction
+	}
+
+	return sorted
+}
 
 // splitIntoBatches divides transactions into batches of BatchSize.
 func splitIntoBatches(transactions []*adapter.TransactionForAI) [][]*adapter.TransactionForAI {
@@ -256,8 +440,14 @@ func (uc *StartCategorizationUseCase) processCategorizationAsync(ctx context.Con
 		}
 	}
 
+	// Sort transactions by merchant to group similar ones together.
+	// This increases the chance that similar transactions (e.g., multiple UBER trips)
+	// end up in the same batch, allowing the AI to properly group them.
+	sortedTxs := sortTransactionsByMerchant(txsForAI)
+	logger.Info("Sorted transactions by merchant for better grouping")
+
 	// Split transactions into batches
-	batches := splitIntoBatches(txsForAI)
+	batches := splitIntoBatches(sortedTxs)
 	totalBatches := len(batches)
 
 	// Limit to MaxBatches

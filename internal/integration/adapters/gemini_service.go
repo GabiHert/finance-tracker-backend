@@ -93,10 +93,34 @@ Para cada transacao, voce deve:
 2. Sugerir uma categoria existente ou propor uma nova
 3. Identificar o tipo de correspondencia: "exact", "startsWith", ou "contains"
 
+PRIORIDADE DE CATEGORIZACAO (SIGA ESTA ORDEM):
+1. PRIMEIRO: Use uma categoria EXISTENTE se for apropriada (mesmo que nao seja perfeita)
+2. SEGUNDO: Se criar nova categoria, reutilize-a para TODAS as transacoes similares no lote
+3. ULTIMO RECURSO: Crie categoria unica apenas se nao houver padrao comum
+
+EXTRACAO DE PADROES - EXEMPLOS:
+- "UBER *TRIP HELP.UBER.COM" -> use "UBER" (nao o codigo especifico)
+- "PAG*JoseDaSilva" -> use "PAG*" para PIX generico
+- "NETFLIX.COM 866-579-7172" -> use "NETFLIX"
+- "MERCPAGO*MERCADOLIVRE" -> use "MERCADOLIVRE" ou "MERCPAGO"
+- "PG *NUBANK PPU" -> use "NUBANK"
+- "IFOOD *IFOOD" -> use "IFOOD"
+- "RAPPI*RAPPI BR" -> use "RAPPI"
+- "GOOGLE *YOUTUBE" -> use "YOUTUBE" ou "GOOGLE"
+- "AMAZON PRIME*" -> use "AMAZON"
+- Sempre extraia o NOME DO ESTABELECIMENTO, nao codigos/numeros especificos
+
+ESTRATEGIA DE AGRUPAMENTO:
+- ANTES de gerar sugestoes, agrupe mentalmente as transacoes por estabelecimento/servico
+- Crie UMA sugestao por grupo, incluindo TODOS os IDs de transacoes afetadas
+- Prefira padroes "contains" com palavras-chave curtas (ex: "UBER", "IFOOD", "NETFLIX")
+- EVITE padroes muito especificos que capturem apenas 1 transacao
+- Se 5 transacoes sao de UBER, gere APENAS 1 sugestao com os 5 IDs em affected_transaction_ids
+
 REGRAS IMPORTANTES:
 - Prefira categorias existentes quando correspondem bem
 - Para novas categorias, sugira nome (em Portugues, exceto termos comuns em ingles), icone (da lista abaixo), e cor hex
-- A palavra-chave deve ser especifica para evitar falsos positivos, mas geral para capturar transacoes similares
+- A palavra-chave deve ser GERAL o suficiente para capturar transacoes do mesmo estabelecimento. Prefira palavras curtas como "UBER", "IFOOD", "NETFLIX" em vez de padroes longos com codigos
 - Use "contains" para parciais, "startsWith" para prefixo, "exact" para exatas
 - Agrupe transacoes similares pelo padrao
 
@@ -149,6 +173,12 @@ CATEGORIAS EXISTENTES:
 	}
 
 	sb.WriteString(`
+
+IMPORTANTE - EVITE DUPLICACAO:
+- Se voce sugerir criar uma nova categoria (ex: "Streaming"), use a MESMA categoria para TODAS as transacoes de streaming no lote
+- Nao crie "Streaming" para Netflix e "Assinaturas" para Spotify - consolide em uma categoria
+- O campo "affected_transaction_ids" deve incluir TODOS os IDs de transacoes que correspondem ao padrao
+- OBJETIVO: Minimizar o numero de sugestoes, maximizar o agrupamento
 
 Responda com um array JSON de sugestoes. Cada sugestao deve ter:
 {

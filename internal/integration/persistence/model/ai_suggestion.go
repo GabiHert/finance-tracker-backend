@@ -106,8 +106,9 @@ func (m *AISuggestionModel) ToEntity() *entity.AISuggestion {
 // ToEntityWithDetails converts an AISuggestionModel with relationships to a domain entity with details.
 func (m *AISuggestionModel) ToEntityWithDetails() *entity.AISuggestionWithDetails {
 	result := &entity.AISuggestionWithDetails{
-		Suggestion:              m.ToEntity(),
+		Suggestion:               m.ToEntity(),
 		AffectedTransactionCount: len(m.AffectedTransactionIDs),
+		AffectedTransactions:     make([]*entity.Transaction, 0),
 	}
 
 	if m.Transaction != nil {
@@ -116,6 +117,34 @@ func (m *AISuggestionModel) ToEntityWithDetails() *entity.AISuggestionWithDetail
 
 	if m.Category != nil {
 		result.Category = m.Category.ToEntity()
+	}
+
+	return result
+}
+
+// ToEntityWithDetailsAndTransactions converts model to entity with full affected transaction details.
+func (m *AISuggestionModel) ToEntityWithDetailsAndTransactions(txnMap map[uuid.UUID]*TransactionModel) *entity.AISuggestionWithDetails {
+	result := &entity.AISuggestionWithDetails{
+		Suggestion:               m.ToEntity(),
+		AffectedTransactionCount: len(m.AffectedTransactionIDs),
+		AffectedTransactions:     make([]*entity.Transaction, 0, len(m.AffectedTransactionIDs)),
+	}
+
+	if m.Transaction != nil {
+		result.Transaction = m.Transaction.ToEntity()
+	}
+
+	if m.Category != nil {
+		result.Category = m.Category.ToEntity()
+	}
+
+	// Populate affected transactions from the lookup map
+	for _, idStr := range m.AffectedTransactionIDs {
+		if id, err := uuid.Parse(idStr); err == nil {
+			if txn, ok := txnMap[id]; ok {
+				result.AffectedTransactions = append(result.AffectedTransactions, txn.ToEntity())
+			}
+		}
 	}
 
 	return result
