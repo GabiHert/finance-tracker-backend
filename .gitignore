@@ -37,3 +37,6 @@ build-errors.log
 
 # Air
 tmp/
+
+# Dependencies (Node.js)
+node_modules/
