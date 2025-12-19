@@ -78,7 +78,7 @@ type MatchRuleResponse struct {
 type AffectedTransactionResponse struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`
-	Amount      string `json:"amount"`
+	Amount      int64  `json:"amount"`
 	Date        string `json:"date"`
 }
 
@@ -97,7 +97,7 @@ type SuggestionResponse struct {
 type SkippedTransactionResponse struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`
-	Amount      string `json:"amount"`
+	Amount      int64  `json:"amount"`
 	Date        string `json:"date"`
 	SkipReason  string `json:"skip_reason"`
 }
@@ -174,7 +174,7 @@ func ToSuggestionResponse(output aicategorization.SuggestionOutput) SuggestionRe
 		affectedTransactions[i] = AffectedTransactionResponse{
 			ID:          t.ID,
 			Description: t.Description,
-			Amount:      t.Amount.String(),
+			Amount:      t.Amount.IntPart(),
 			Date:        t.Date,
 		}
 	}
@@ -207,7 +207,7 @@ func ToSkippedTransactionResponse(output aicategorization.SkippedTransactionOutp
 	return SkippedTransactionResponse{
 		ID:          output.ID,
 		Description: output.Description,
-		Amount:      output.Amount.String(),
+		Amount:      output.Amount.IntPart(),
 		Date:        output.Date,
 		SkipReason:  output.SkipReason,
 	}
