@@ -159,6 +159,10 @@ type TransactionRepository interface {
 		startDate time.Time,
 		endDate time.Time,
 	) ([]*entity.ExpenseWithCategory, error)
+
+	// CountUncategorizedByUser counts all transactions for a user that have no category assigned.
+	// This is used by the AI categorization feature to determine how many transactions need categorization.
+	CountUncategorizedByUser(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
 // CreditCardStatus represents the status of credit card transactions for a billing cycle.

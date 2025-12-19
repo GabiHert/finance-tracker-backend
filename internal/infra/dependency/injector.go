@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/finance-tracker/backend/config"
+	aicategorization "github.com/finance-tracker/backend/internal/application/usecase/ai_categorization"
 	"github.com/finance-tracker/backend/internal/application/usecase/auth"
 	"github.com/finance-tracker/backend/internal/application/usecase/category"
 	categoryrule "github.com/finance-tracker/backend/internal/application/usecase/category_rule"
@@ -42,14 +43,19 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	groupRepo := persistence.NewGroupRepository(db)
 	categoryRuleRepo := persistence.NewCategoryRuleRepository(db)
 	emailQueueRepo := persistence.NewEmailQueueRepository(db)
+	aiSuggestionRepo := persistence.NewAISuggestionRepository(db)
 
 	// Create adapters/services
 	passwordService := adapters.NewPasswordService()
 	tokenService := adapters.NewTokenService(cfg.JWT.Secret, tokenRepo)
 	resetTokenService := adapters.NewPasswordResetTokenService(tokenRepo)
+	geminiService := adapters.NewGeminiService(cfg.AI.GeminiAPIKey)
 
 	// Create email service for queueing
 	emailService := email.NewService(emailQueueRepo, cfg.Email.AppBaseURL)
+
+	// Create processing tracker for AI categorization
+	processingTracker := aicategorization.NewInMemoryProcessingTracker()
 
 	// Create auth use cases
 	registerUseCase := auth.NewRegisterUserUseCase(userRepo, passwordService, tokenService)
@@ -115,6 +121,14 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	deleteCategoryRuleUseCase := categoryrule.NewDeleteCategoryRuleUseCase(categoryRuleRepo)
 	reorderCategoryRulesUseCase := categoryrule.NewReorderCategoryRulesUseCase(categoryRuleRepo)
 	testPatternUseCase := categoryrule.NewTestPatternUseCase(categoryRuleRepo)
+
+	// Create AI categorization use cases
+	aiGetStatusUseCase := aicategorization.NewGetStatusUseCase(transactionRepo, aiSuggestionRepo, processingTracker)
+	aiStartCategorizationUseCase := aicategorization.NewStartCategorizationUseCase(transactionRepo, categoryRepo, aiSuggestionRepo, geminiService, processingTracker)
+	aiGetSuggestionsUseCase := aicategorization.NewGetSuggestionsUseCase(aiSuggestionRepo)
+	aiApproveSuggestionUseCase := aicategorization.NewApproveSuggestionUseCase(aiSuggestionRepo, categoryRepo, transactionRepo, categoryRuleRepo)
+	aiRejectSuggestionUseCase := aicategorization.NewRejectSuggestionUseCase(aiSuggestionRepo, geminiService, transactionRepo, categoryRepo)
+	aiClearSuggestionsUseCase := aicategorization.NewClearSuggestionsUseCase(aiSuggestionRepo)
 
 	// Create controllers
 	healthController := controller.NewHealthController(func() bool {
@@ -203,6 +217,15 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		testPatternUseCase,
 	)
 
+	aiCategorizationController := controller.NewAiCategorizationController(
+		aiGetStatusUseCase,
+		aiStartCategorizationUseCase,
+		aiGetSuggestionsUseCase,
+		aiApproveSuggestionUseCase,
+		aiRejectSuggestionUseCase,
+		aiClearSuggestionsUseCase,
+	)
+
 	// Create dashboard use cases
 	getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
 
@@ -220,7 +243,7 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	// Create router
-	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, loginRateLimiter, authMiddleware)
+	r := router.NewRouter(healthController, authController, userController, categoryController, transactionController, creditCardController, reconciliationController, goalController, groupController, categoryRuleController, dashboardController, aiCategorizationController, loginRateLimiter, authMiddleware)
 
 	return &Injector{
 		Config: cfg,

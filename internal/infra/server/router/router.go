@@ -10,20 +10,21 @@ import (
 
 // Router holds the Gin engine and controller dependencies.
 type Router struct {
-	engine                    *gin.Engine
-	healthController          *controller.HealthController
-	authController            *controller.AuthController
-	userController            *controller.UserController
-	categoryController        *controller.CategoryController
-	transactionController     *controller.TransactionController
-	creditCardController      *controller.CreditCardController
-	reconciliationController  *controller.ReconciliationController
-	goalController            *controller.GoalController
-	groupController           *controller.GroupController
-	categoryRuleController    *controller.CategoryRuleController
-	dashboardController       *controller.DashboardController
-	loginRateLimiter          *middleware.RateLimiter
-	authMiddleware            *middleware.AuthMiddleware
+	engine                     *gin.Engine
+	healthController           *controller.HealthController
+	authController             *controller.AuthController
+	userController             *controller.UserController
+	categoryController         *controller.CategoryController
+	transactionController      *controller.TransactionController
+	creditCardController       *controller.CreditCardController
+	reconciliationController   *controller.ReconciliationController
+	goalController             *controller.GoalController
+	groupController            *controller.GroupController
+	categoryRuleController     *controller.CategoryRuleController
+	dashboardController        *controller.DashboardController
+	aiCategorizationController *controller.AiCategorizationController
+	loginRateLimiter           *middleware.RateLimiter
+	authMiddleware             *middleware.AuthMiddleware
 }
 
 // NewRouter creates a new router instance with all dependencies.
@@ -39,23 +40,25 @@ func NewRouter(
 	groupController *controller.GroupController,
 	categoryRuleController *controller.CategoryRuleController,
 	dashboardController *controller.DashboardController,
+	aiCategorizationController *controller.AiCategorizationController,
 	loginRateLimiter *middleware.RateLimiter,
 	authMiddleware *middleware.AuthMiddleware,
 ) *Router {
 	return &Router{
-		healthController:         healthController,
-		authController:           authController,
-		userController:           userController,
-		categoryController:       categoryController,
-		transactionController:    transactionController,
-		creditCardController:     creditCardController,
-		reconciliationController: reconciliationController,
-		goalController:           goalController,
-		groupController:          groupController,
-		categoryRuleController:   categoryRuleController,
-		dashboardController:      dashboardController,
-		loginRateLimiter:         loginRateLimiter,
-		authMiddleware:           authMiddleware,
+		healthController:           healthController,
+		authController:             authController,
+		userController:             userController,
+		categoryController:         categoryController,
+		transactionController:      transactionController,
+		creditCardController:       creditCardController,
+		reconciliationController:   reconciliationController,
+		goalController:             goalController,
+		groupController:            groupController,
+		categoryRuleController:     categoryRuleController,
+		dashboardController:        dashboardController,
+		aiCategorizationController: aiCategorizationController,
+		loginRateLimiter:           loginRateLimiter,
+		authMiddleware:             authMiddleware,
 	}
 }
 
@@ -221,6 +224,20 @@ func (r *Router) setupAPIRoutes() {
 			dashboard.Use(r.authMiddleware.Authenticate())
 			{
 				dashboard.GET("/category-trends", r.dashboardController.GetCategoryTrends)
+			}
+		}
+
+		// AI Categorization routes (require authentication)
+		if r.aiCategorizationController != nil && r.authMiddleware != nil {
+			ai := v1.Group("/ai/categorization")
+			ai.Use(r.authMiddleware.Authenticate())
+			{
+				ai.GET("/status", r.aiCategorizationController.GetStatus)
+				ai.POST("/start", r.aiCategorizationController.Start)
+				ai.GET("/suggestions", r.aiCategorizationController.GetSuggestions)
+				ai.POST("/suggestions/:id/approve", r.aiCategorizationController.ApproveSuggestion)
+				ai.POST("/suggestions/:id/reject", r.aiCategorizationController.RejectSuggestion)
+				ai.DELETE("/suggestions", r.aiCategorizationController.ClearSuggestions)
 			}
 		}
 	}
