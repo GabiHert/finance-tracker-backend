@@ -39,6 +39,7 @@ type AffectedTransactionOutput struct {
 	ID          string
 	Description string
 	Amount      decimal.Decimal
+	Type        entity.TransactionType
 	Date        string
 }
 
@@ -58,6 +59,7 @@ type SkippedTransactionOutput struct {
 	ID          string
 	Description string
 	Amount      decimal.Decimal
+	Type        entity.TransactionType
 	Date        string
 	SkipReason  string
 }
@@ -151,6 +153,7 @@ func (uc *GetSuggestionsUseCase) toSuggestionOutput(s *entity.AISuggestionWithDe
 				ID:          t.ID.String(),
 				Description: t.Description,
 				Amount:      t.Amount,
+				Type:        t.Type,
 				Date:        t.Date.Format("2006-01-02"),
 			})
 		}

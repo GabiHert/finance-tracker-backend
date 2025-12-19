@@ -3,6 +3,7 @@ package dto
 
 import (
 	aicategorization "github.com/finance-tracker/backend/internal/application/usecase/ai_categorization"
+	"github.com/finance-tracker/backend/internal/domain/entity"
 )
 
 // =============================================================================
@@ -171,10 +172,17 @@ func ToSuggestionResponse(output aicategorization.SuggestionOutput) SuggestionRe
 	// Convert affected transactions
 	affectedTransactions := make([]AffectedTransactionResponse, len(output.AffectedTransactions))
 	for i, t := range output.AffectedTransactions {
+		amount := t.Amount.IntPart()
+		// Ensure expenses are negative, income is positive
+		if t.Type == entity.TransactionTypeExpense && amount > 0 {
+			amount = -amount
+		} else if t.Type == entity.TransactionTypeIncome && amount < 0 {
+			amount = -amount
+		}
 		affectedTransactions[i] = AffectedTransactionResponse{
 			ID:          t.ID,
 			Description: t.Description,
-			Amount:      t.Amount.IntPart(),
+			Amount:      amount,
 			Date:        t.Date,
 		}
 	}
@@ -204,10 +212,17 @@ func ToSuggestionResponse(output aicategorization.SuggestionOutput) SuggestionRe
 
 // ToSkippedTransactionResponse converts use case output to DTO.
 func ToSkippedTransactionResponse(output aicategorization.SkippedTransactionOutput) SkippedTransactionResponse {
+	amount := output.Amount.IntPart()
+	// Ensure expenses are negative, income is positive
+	if output.Type == entity.TransactionTypeExpense && amount > 0 {
+		amount = -amount
+	} else if output.Type == entity.TransactionTypeIncome && amount < 0 {
+		amount = -amount
+	}
 	return SkippedTransactionResponse{
 		ID:          output.ID,
 		Description: output.Description,
-		Amount:      output.Amount.IntPart(),
+		Amount:      amount,
 		Date:        output.Date,
 		SkipReason:  output.SkipReason,
 	}
