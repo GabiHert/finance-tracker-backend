@@ -382,11 +382,22 @@ func (t *testContext) startServer() {
 
 			userController := controller.NewUserController(deleteAccountUseCase)
 
-			// Create dashboard use cases
+			// Create dashboard repository and use cases
+			dashboardRepo := persistence.NewDashboardRepository(testDB.DbConn)
 			getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+			getDataRangeUseCase := dashboard.NewGetDataRangeUseCase(dashboardRepo)
+			getTrendsUseCase := dashboard.NewGetTrendsUseCase(dashboardRepo)
+			getCategoryBreakdownUseCase := dashboard.NewGetCategoryBreakdownUseCase(dashboardRepo)
+			getPeriodTransactionsUseCase := dashboard.NewGetPeriodTransactionsUseCase(dashboardRepo)
 
 			// Create dashboard controller
-			dashboardController := controller.NewDashboardController(getCategoryTrendsUseCase)
+			dashboardController := controller.NewDashboardController(
+				getCategoryTrendsUseCase,
+				getDataRangeUseCase,
+				getTrendsUseCase,
+				getCategoryBreakdownUseCase,
+				getPeriodTransactionsUseCase,
+			)
 
 			// Create middleware
 			loginRateLimiter := middleware.NewRateLimiter()

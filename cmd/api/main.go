@@ -332,11 +332,22 @@ func main() {
 			testPatternUseCase,
 		)
 
-		// Create dashboard use cases
+		// Create dashboard repository and use cases
+		dashboardRepo := persistence.NewDashboardRepository(database.DB())
 		getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+		getDataRangeUseCase := dashboard.NewGetDataRangeUseCase(dashboardRepo)
+		getTrendsUseCase := dashboard.NewGetTrendsUseCase(dashboardRepo)
+		getCategoryBreakdownUseCase := dashboard.NewGetCategoryBreakdownUseCase(dashboardRepo)
+		getPeriodTransactionsUseCase := dashboard.NewGetPeriodTransactionsUseCase(dashboardRepo)
 
 		// Create dashboard controller
-		dashboardController = controller.NewDashboardController(getCategoryTrendsUseCase)
+		dashboardController = controller.NewDashboardController(
+			getCategoryTrendsUseCase,
+			getDataRangeUseCase,
+			getTrendsUseCase,
+			getCategoryBreakdownUseCase,
+			getPeriodTransactionsUseCase,
+		)
 
 		// Create AI categorization use cases
 		aiGetStatusUseCase := aicategorization.NewGetStatusUseCase(transactionRepo, aiSuggestionRepo, processingTracker)
