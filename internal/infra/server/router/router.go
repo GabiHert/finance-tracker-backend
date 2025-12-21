@@ -224,6 +224,10 @@ func (r *Router) setupAPIRoutes() {
 			dashboard.Use(r.authMiddleware.Authenticate())
 			{
 				dashboard.GET("/category-trends", r.dashboardController.GetCategoryTrends)
+				dashboard.GET("/data-range", r.dashboardController.GetDataRange)
+				dashboard.GET("/trends", r.dashboardController.GetTrends)
+				dashboard.GET("/category-breakdown", r.dashboardController.GetCategoryBreakdown)
+				dashboard.GET("/period-transactions", r.dashboardController.GetPeriodTransactions)
 			}
 		}
 

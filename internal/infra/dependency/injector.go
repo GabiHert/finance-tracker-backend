@@ -226,11 +226,22 @@ func NewInjector(cfg *config.Config, db *gorm.DB) *Injector {
 		aiClearSuggestionsUseCase,
 	)
 
-	// Create dashboard use cases
+	// Create dashboard repository and use cases
+	dashboardRepo := persistence.NewDashboardRepository(db)
 	getCategoryTrendsUseCase := dashboard.NewGetCategoryTrendsUseCase(transactionRepo)
+	getDataRangeUseCase := dashboard.NewGetDataRangeUseCase(dashboardRepo)
+	getTrendsUseCase := dashboard.NewGetTrendsUseCase(dashboardRepo)
+	getCategoryBreakdownUseCase := dashboard.NewGetCategoryBreakdownUseCase(dashboardRepo)
+	getPeriodTransactionsUseCase := dashboard.NewGetPeriodTransactionsUseCase(dashboardRepo)
 
 	// Create dashboard controller
-	dashboardController := controller.NewDashboardController(getCategoryTrendsUseCase)
+	dashboardController := controller.NewDashboardController(
+		getCategoryTrendsUseCase,
+		getDataRangeUseCase,
+		getTrendsUseCase,
+		getCategoryBreakdownUseCase,
+		getPeriodTransactionsUseCase,
+	)
 
 	// Create middleware
 	// Use higher rate limits for E2E/test environments to prevent flaky tests
